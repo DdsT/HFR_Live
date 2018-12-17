@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name           [HFR] Live
+// @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.0
+// @version        0.1.1
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -40,8 +40,6 @@ along with this program.  If not, see https://ddst.github.io/hfr_ColorTag/LICENS
 */
 
 /************** TODO *****************
- * Infinite scroll
- * Menu contextuel Firefox
  * Fenêtre de configuration
  * test de compatibilité
  *************************************/
@@ -49,27 +47,28 @@ along with this program.  If not, see https://ddst.github.io/hfr_ColorTag/LICENS
 /*** Paramètres du script ***/
 let config = {
   fetchInterval   : 4000, // Intervalle entre chaque requête (ne pas descendre trop bas sous peine de ban IP)
-//  contextMenu     : true, // Le script peut être piloté depuis le menu contextuel (au 12/2018 : Firefox uniquement)
+  contextMenu     : true, // Le script peut être piloté depuis le menu contextuel (au 12/2018 : Firefox uniquement)
   changePage      : true, // Le script passe automatiquement à la page suivante
-//  pageAmount      : 1,    // Nombre de pages à combiner avant de changer de page
+  pageAmount      : 10,   // Nombre de pages à combiner avant de changer de page
   changePageDelay : 2000, // Temporisation avant le changement de page
   // Paramètres d'affichage
-  messageInterval : 500,  // Intervalle minimum entre l'apparition de 2 messages sur la page
-  fadeInTime      : 1000, // Durée de l'animation d'apparition d'un message
+  messageInterval : 500,   // Intervalle minimum entre l'apparition de 2 messages sur la page
+  fadeInTime      : 1000,  // Durée de l'animation d'apparition d'un message
   legacyButton    : false, // Le bouton du script d'origine est utilisé
   colorBlind      : false, // Le mode daltonien est activé (bleu à la place du vert)
-  control         : true, // Un panneau de contrôle apparaît lorsque le script est activé
-  controlRight    : true, // Le panneau de contrôle est situé à droite
+  control         : true,  // Un panneau de contrôle apparaît lorsque le script est activé
+  controlRight    : true,  // Le panneau de contrôle est situé à droite
   controlBottom   : false, // Le panneau de contrôle est situé en bas de la page
-  favicon         : true, // L'icône de la page change lors de l'activation du script
-  unreadIndicator : true, // Indiquer les messages non-lus dans le titre
+  controlAlwaysOn : false, // Le panneau de contrôle est toujours affichés
+  favicon         : true,  // L'icône de la page change lors de l'activation du script
+  unreadIndicator : true,  // Indiquer les messages non-lus dans le titre
   unreadIcon      : "🔔",  // Icône d'indication de messages non lus
   // Paramètres de défilement
   scroll          : {
-    duration      : 2000, // Durée de base de l'animation de défilement
-    onBlur        : true, // La page défile aussi quand l'utilisateur n'est pas sur la page
-    autoResume    : true, // Le défilement reprend automatiquement après avoir été interrompu par l'utilisateur
-    pauseDuration : 2000, // Délai de reprise du défilement automatique après une action de l'utilisateur
+    duration      : 2000,  // Durée de base de l'animation de défilement
+    onBlur        : true,  // La page défile aussi quand l'utilisateur n'est pas sur la page
+    autoResume    : true,  // Le défilement reprend automatiquement après avoir été interrompu par l'utilisateur
+    pauseDuration : 2000,  // Délai de reprise du défilement automatique après une action de l'utilisateur
     resumeToLast  : false, // La page défile automatiquement jusqu'au dernier message à la reprise du défilement automatique
   },
   // Paramètres de notification
@@ -83,8 +82,11 @@ let config = {
     topic     : true,   // Le nom du topic apparaît dans le titre de la notification
     separator : "dans", // Séparateur entre le pseudo du partitipant et le titre du page
     image     : "🖼️", // Substitut d'une image dans le texte d'une notification
-    link      : "🔗"  // Substitut d'un lien dans le texte d'une notification
-  }
+    link      : "🔗",  // Substitut d'un lien dans le texte d'une notification
+    quote     : "📰"  // Substitut d'une citation dans le texte d'une notification
+  },
+  open() {},
+  hide() {},
 }
 /*** Fin des paramètres ***/
 
@@ -114,18 +116,19 @@ let page = {
                     .replace(/numrep=(.*?)&/, "numrep=[...]&"),
   url           : document.URL,                                 // URL de la page actuelle
   index         : $(".cBackHeader b").last().text(),            // Numéro de la page actuelle
+  mergeCounter  : 0,                                            // Nombre de pages ajoutés
   isLive        : false,                                        // Le script est en cours d'execution
   isFetching    : false,                                        // La page est en train d'être récupérée pour traitement
   isUpdating    : false,                                        // Des messages sont en train d'être ajoutés à la page
   isNotifying   : false,                                        // Une notification a été envoyé il y a peu de temps
   isScrolling   : false,                                        // Un ordre de défilement a déjà été envoyé à la page
-  isChanging    : false,
+  isMerging     : false,                                        // La page suivante est en train d'être intégrée
   autoScroll    : true,                                         // La page défile automatiquement
   notifications : [],                                           // File d'attente des notifications
   get next() {                                                  // Page suivante
     return $(page.fetched).find(".pagepresuiv:first a");
   },
-  get isLast() {                                                // La page actuelle est la dernière du page
+  get isLast() {                                                // La page actuelle est la dernière du topic
     return page.next.length == 0;
   },
 
@@ -143,15 +146,15 @@ let page = {
   endFetch() {page.isFetching = false},
 
   succeedFetch(data) {
-    if (page.isChanging) {
+    if (page.isMerging) {
       page.addNextPage(data);
     } else {
-      page.addNewPage(data);
+      page.addFetchedPage(data);
     }
   },
-  
+
   /* Ajouter les nouveaux messages à la page en cours */
-  addNewPage(data) {
+  addFetchedPage(data) {
     let messageIndex = page.fetchedTable.length;
     page.fetched = $.parseHTML(data);
     page.fetchedTable = $(page.fetched).find(".messagetable");
@@ -161,20 +164,35 @@ let page = {
     page.update();
   },
 
-  /* Ajouter la page suivante à la page en cours */
+  /* Intégrer la page suivante à la page en cours */
   addNextPage(data) {
+    ++page.mergeCounter;
+    GM.setValue(`${page.cat}&${page.subcat}&${page.post}`, parseInt(page.index) + page.mergeCounter);
+    history.pushState(null, null, page.url);
     let messageIndex = 1;
     page.fetched = $.parseHTML(data);
     page.fetchedTable = $(page.fetched).find(".messagetable");
+    // Ajout de l'indicateur de changement de page :
     let separator = $(".fondForum2PagesBas").parent().parent().get(0).cloneNode(true);
-    separator.className = "messagetable";
+    separator.className = "hfr-live-new-page messagetable";
     $(separator).find("tr").get(0).innerHTML = "Page " + $(page.fetched).find(".cBackHeader b").last().text();
     page.queue.push(separator);
     for (; messageIndex < page.fetchedTable.length; ++messageIndex) {
       page.queue.push(page.fetchedTable.get(messageIndex));
     }
+    // Mise à jour des bandeaux de navigations :
+    let newTopRow = $(page.fetched).find(".fondForum2PagesHaut");
+    let oldTopRow = $(".fondForum2PagesHaut");
+    oldTopRow.after(newTopRow);
+    oldTopRow.get(0).remove();
+    let newBottomRow = $(page.fetched).find(".fondForum2PagesBas");
+    let oldBottomRow = $(".fondForum2PagesBas").last();
+    oldBottomRow.after(newBottomRow);
+    oldBottomRow.get(0).remove();
+    $(".fondForum2PagesBas .pagepresuiv").last().after(newButton());
+
+    page.isMerging = false;
     page.update();
-    page.isChanging = false;
   },
 
   /* Demander le traitement de la file d'attente */
@@ -190,20 +208,21 @@ let page = {
     let message = page.queue.shift();
     if (message) {
       page.lastMessage.after(message);
-      /*
-      appendMissingHref(message);
-      $(message).hide().fadeIn(config.fadeInTime);
-      if (config.unreadIndicator) page.updateTitle();
-      if(config.notification.enabled
-         && ("Notification" in window)
-         && (!document.hasFocus() || config.notification.onfocus)) {
-        page.notifications.push(message);
-        page.notify();
+      if (!message.classList.contains("hfr-live-new-page")) {
+      // Le message n'est pas un indicateur de nouvelle page
+        repairLink(message);
+        $(message).hide().fadeIn(config.fadeInTime);
+        if (config.unreadIndicator) page.updateTitle();
+        if(config.notification.enabled
+           && ("Notification" in window)
+           && (!document.hasFocus() || config.notification.onfocus)) {
+          page.notifications.push(message);
+          page.notify();
+        }
       }
-      */
       page.lastMessage = $(".messagetable").last();
       page.requestScroll();
-      if (document.hasFocus()) {
+      if (document.hasFocus() && page.isLast) {
         setTimeout(page.processQueue, config.messageInterval);
       } else {
       //Pas de temporisation hors focus car les navigateurs fixent le minimum à une seconde
@@ -211,9 +230,14 @@ let page = {
       }
     } else {
       page.isUpdating = false;
-      if (!page.isLast && config.changePage) {
-        page.url = page.next.attr("href");
-        page.isChanging = true;
+      if (!page.isLast) {
+        if (page.mergeCounter + 1 < config.pageAmount) {
+        // La page suivante va être intégrée à la page actuelle
+          page.url = page.next.attr("href");
+          page.isMerging = true;
+        } else {
+          if (config.changePage) page.goNext();
+        }
       }
     }
   },
@@ -342,8 +366,8 @@ let page = {
   },
 }
 
-/* Rajouter le lien manquant au bouton de citation */
-function appendMissingHref(message) {
+/* Réparer les liens d'un message ajouté */
+function repairLink(message) {
   let quoteButton = $(message).find("img[alt='answer']").get(0);
   $(quoteButton).wrap(`<a href ="${getURL(message)}"></a>`);
 }
@@ -359,12 +383,14 @@ function formatBody(message) {
   //Suppressions des élements autres que le texte du message :
   let content = $(message).find("div[id^='para']").get(0).cloneNode(true);
   //formatage des citations :
-  $(content).find(".citation p, .citation br, .citation ul, .oldcitation p, .oldcitation br, .oldcitation ul, .edited, .signature").remove();
+  $(content).find(".citation p, .citation br, .citation ul, .oldcitation p, .oldcitation br, .oldcitation ul, .quote p, .quote br, .quote ul, .edited, .signature").remove();
   $(content).find("b.s1").each((i,el) => {
     el.innerHTML = el.innerHTML.replace(/ a écrit :/g,"");
-    el.innerHTML = "@" + el.innerHTML + " : ";
+    el.innerHTML = `@${el.innerHTML} : `;
+    el.innerHTML = el.innerHTML.replace(/@Citation : : /g, config.notification.quote + "\n");
   });
   //Remplacement des images, des liens et des smileys par un substitut ou par leur alt respectivement :
+  $(content).find("a.cLink img").each((i,el) => el.parentNode.outerHTML = config.notification.image + config.notification.link + el.parentNode.hostname);
   $(content).find("img").each((i,el) => el.outerHTML = el.alt.replace(/.+\/\/.*/g, config.notification.image));
   $(content).find("a.cLink").each((i,el) => el.outerHTML = config.notification.link + el.hostname);
   //Formatage des sauts de lignes :
@@ -398,14 +424,20 @@ function toggleScript() {
   if (page.isLive) {
     page.fetch();
     page.fetchTimer = setInterval(page.fetch, config.fetchInterval);
-    GM.setValue(`${page.cat}&${page.subcat}&${page.post}`, parseInt(page.index));
-    $(".hfr-live-button").each((i,el) => el.setAttribute("on",true));
+    GM.setValue(`${page.cat}&${page.subcat}&${page.post}`, parseInt(page.index) + page.mergeCounter);
+    $(".hfr-live-button").each((i,el) => {
+      el.setAttribute("on",true);
+      el.title = "Désactiver [HFR] Live";
+    });
     if (config.control) control.show();
     if (config.favicon) page.changeFavicon(FAVICON_LIVE);
   } else {
     clearInterval(page.fetchTimer);
     GM.deleteValue(`${page.cat}&${page.subcat}&${page.post}`);
-    $(".hfr-live-button").each((i,el) => el.setAttribute("on",false));
+    $(".hfr-live-button").each((i,el) => {
+      el.setAttribute("on",false);
+      el.title = "Activer [HFR] Live";
+    });
     control.hide();
     if (config.favicon) page.changeFavicon(FAVICON);
   }
@@ -446,7 +478,7 @@ GM.addStyle(`
     margin        : 2px;
   }
   .hfr-live-led:after {
-    display          : block;            
+    display          : block;
     content          : '';
     margin-left      : 1px;
     margin-right     : 1px;
@@ -455,6 +487,24 @@ GM.addStyle(`
     border-radius    : 50%;
     background-image : -webkit-linear-gradient(top, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.2) 100%);
   }
+
+  .fondForum2PagesBas .hfr-live-led {
+    border-radius : 50%;
+    width         : 10px;
+    height        : 10px;
+    margin        : 2px;
+  }
+  .fondForum2PagesBas .hfr-live-led:after {
+    display          : block;
+    content          : '';
+    margin-left      : 1px;
+    margin-right     : 1px;
+    width            : 8px;
+    height           : 5px;
+    border-radius    : 50%;
+    background-image : -webkit-linear-gradient(top, rgba(255,255,255,0.8) 0%, rgba(255,255,255,0.2) 100%);
+  }
+
   .fondForum2Fonctions .hfr-live-led {
     margin-top : 3px;
   }
@@ -463,9 +513,9 @@ GM.addStyle(`
 function newLedButton() {
   let led = document.createElement("div");
   led.className ="hfr-live-led hfr-live-button";
-  led.setAttribute("on",false);
+  led.setAttribute("on",page.isLive);
   led.setAttribute("colorblind",config.colorBlind);
-  led.title = "[HFR] Live";
+  led.title = `${(page.isLive)?"Désactiver":"Activer"} [HFR] Live`;
   led.onclick = toggleScript;
   return led;
 }
@@ -475,9 +525,9 @@ function newLegacyButton() {
   button.type = "submit";
   button.value = "LIVE";
   button.className ="hfr-live-legacy hfr-live-button";
-  button.setAttribute("on",false);
+  button.setAttribute("on",page.isLive);
   button.setAttribute("colorblind",config.colorBlind);
-  button.title = "[HFR] Live";
+  button.title = `${(page.isLive)?"Désactiver":"Activer"} [HFR] Live`;
   button.onclick = toggleScript;
   return button;
 }
@@ -543,9 +593,9 @@ GM.addStyle(`
 control.id ="hfr-live-control";
 control.setAttribute("bottom",config.controlBottom);
 control.setAttribute("right",config.controlRight);
-control.setAttribute("visible",false);
+control.setAttribute("visible",false || config.controlAlwaysOn);
 control.show = () => control.setAttribute("visible",true);
-control.hide = () => control.setAttribute("visible",false);
+control.hide = () => control.setAttribute("visible",false || config.controlAlwaysOn);
 
 /* Arrêter ou Reprendre le défilement automatique */
 control.toggleScroll = () => {
@@ -586,16 +636,18 @@ lock.unlock = () => {
 lock.pause = () => lock.setAttribute("paused",true);
 lock.onclick = control.toggleScroll;
 
-let configPanel = document.createElement("img");
-configPanel.src = COG_ICON;
-configPanel.style.cursor = "pointer";
-configPanel.title = "Configurer [HFR] Live";
+let configImage = document.createElement("img");
+configImage.src = COG_ICON;
+configImage.style.cursor = "pointer";
+configImage.title = "Configurer [HFR] Live";
+configImage.onclick = config.open;
 
-control.appendChild(configPanel);
+control.appendChild(configImage);
 control.appendChild(lock);
 control.appendChild(newButton());
 document.body.appendChild(control);
 lock.lock();
+
 
 /* Vérification de l'état du script au chargement de la page */
 (async () => {
