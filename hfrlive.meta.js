@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name           [HFR] Live
+// @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.0
+// @version        0.1.1
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
