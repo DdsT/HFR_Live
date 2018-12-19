@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.1
+// @version        0.1.2
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -40,8 +40,13 @@ along with this program.  If not, see https://ddst.github.io/hfr_ColorTag/LICENS
 */
 
 /************** TODO *****************
+ * Rendre le défilement plus intuitif
+ * Indicateur de nouveau message en bas de la page
+ * Résoudre le problème d'affichage multiple
+ * Gérer les cas de suppression de message
  * Fenêtre de configuration
- * test de compatibilité
+ * Test de compatibilité multi-navigateur
+ * Retirer les alertes de debogage
  *************************************/
 
 /*** Paramètres du script ***/
@@ -133,7 +138,10 @@ let page = {
   },
 
   /* Passer à la page suivante */
-  goNext() {setTimeout(() => window.location.href = $(page.fetched).find(".pagepresuiv:first a").attr("href"), config.changePageDelay)},
+  goNext() {
+    console.log("page change...");
+    setTimeout(() => window.location.href = $(page.fetched).find(".pagepresuiv:first a").attr("href"), config.changePageDelay);
+  },
 
   /* Demander la dernière version de la page et rajouter les nouveaux messages dans la pile */
   fetch() {
@@ -155,12 +163,20 @@ let page = {
 
   /* Ajouter les nouveaux messages à la page en cours */
   addFetchedPage(data) {
-    let messageIndex = page.fetchedTable.length;
     page.fetched = $.parseHTML(data);
-    page.fetchedTable = $(page.fetched).find(".messagetable");
-    for (; messageIndex < page.fetchedTable.length; ++messageIndex) {
-      page.queue.push(page.fetchedTable.get(messageIndex));
+    let newFetchedTable = $(page.fetched).find(".messagetable");
+    let messageIndex = page.fetchedTable.length;
+    console.log("old: " + page.fetchedTable.length + " " + getID(page.fetchedTable.get(messageIndex-1))
+               +" new: " + newFetchedTable.length + " " + getID(newFetchedTable.get(messageIndex-1))
+               );
+    if (getID(page.fetchedTable.get(messageIndex-1)) != getID(newFetchedTable.get(messageIndex-1))) {
+      console.log("Deletion detected !");
     }
+    for (; messageIndex < newFetchedTable.length; ++messageIndex) {
+      page.queue.push(newFetchedTable.get(messageIndex));
+      console.log("+ " + debug(newFetchedTable.get(messageIndex)));
+    }
+    page.fetchedTable = newFetchedTable;
     page.update();
   },
 
@@ -177,8 +193,10 @@ let page = {
     separator.className = "hfr-live-new-page messagetable";
     $(separator).find("tr").get(0).innerHTML = "Page " + $(page.fetched).find(".cBackHeader b").last().text();
     page.queue.push(separator);
+    console.log("new: " + page.fetchedTable.length);
     for (; messageIndex < page.fetchedTable.length; ++messageIndex) {
       page.queue.push(page.fetchedTable.get(messageIndex));
+      console.log("+ " + debug(page.fetchedTable.get(messageIndex)));
     }
     // Mise à jour des bandeaux de navigations :
     let newTopRow = $(page.fetched).find(".fondForum2PagesHaut");
@@ -208,6 +226,7 @@ let page = {
     let message = page.queue.shift();
     if (message) {
       page.lastMessage.after(message);
+      console.log("- " + debug(message));
       if (!message.classList.contains("hfr-live-new-page")) {
       // Le message n'est pas un indicateur de nouvelle page
         repairLink(message);
@@ -235,6 +254,7 @@ let page = {
         // La page suivante va être intégrée à la page actuelle
           page.url = page.next.attr("href");
           page.isMerging = true;
+          console.log("page merge...");
         } else {
           if (config.changePage) page.goNext();
         }
@@ -374,8 +394,12 @@ function repairLink(message) {
 
 /* Renvoyer le lien pour citer un message */
 function getURL(message) {
-  const messageId = $(message).find('a[href^="#t"]').get(0).hash.substring(2);
-  return page.href.replace("[...]", messageId);
+  return page.href.replace("[...]", getID(message));
+}
+
+/* Renvoyer l'ID d'un message */
+function getID(message) {
+  return $(message).find("a[name^='t']").attr("name");
 }
 
 /* Formatter le texte pour la notification */
@@ -416,6 +440,11 @@ function displayNotification(title, option) {
       }
     });
   }
+}
+
+/* Fonction de débogage */
+function debug(message) {
+  return $(message).find("a").attr("name") + " " + $(message).find("b.s2").text();
 }
 
 /* Lancer/Arrêter le script */
