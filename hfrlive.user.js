@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.2
+// @version        0.1.3
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -45,6 +45,7 @@ along with this program.  If not, see https://ddst.github.io/hfr_ColorTag/LICENS
  * Résoudre le problème d'affichage multiple
  * Gérer les cas de suppression de message
  * Fenêtre de configuration
+ * Beta-test
  * Test de compatibilité multi-navigateur
  * Retirer les alertes de debogage
  *************************************/
@@ -108,19 +109,16 @@ const LOCKED_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAA
 
 let page = {
   title         : document.title,
-  topic         : $("form[name='hop'] input[name='sujet']").attr("value"),
-  post          : $("form[name='hop'] input[name='post']").attr("value"),
-  cat           : $("form[name='hop'] input[name='cat']").attr("value"),
-  subcat        : $("form[name='hop'] input[name='subcat']").attr("value"),
+  responseUrl   : String($(".message").find("a[href^='/mess']") // Modèle pour générer les réponses manquantes des messages ajoutés
+                                      .attr("href")),
+  topic         : $(".fondForum2Title").find("h3").text(),      // Titre du sujet
   unread        : 0,                                            // Nombre de messages non lus
   queue         : [],                                           // File d'attente des messages restant à ajouter à la page
   lastMessage   : $(".messagetable").last(),                    // Dernier message actuellement présent sur la page
   fetched       : $(document),                                  // Dernière version de la page
   fetchedTable  : $(".messagetable"),                           // Liste des messages de la dernière version de la page
-  href          : $("img[alt='answer']").parent().attr("href")  // Modèle d'URL pour une citation
-                    .replace(/numrep=(.*?)&/, "numrep=[...]&"),
   url           : document.URL,                                 // URL de la page actuelle
-  index         : $(".cBackHeader b").last().text(),            // Numéro de la page actuelle
+  index         : $(".cBackHeader").find("b").last().text(),    // Numéro de la page actuelle
   mergeCounter  : 0,                                            // Nombre de pages ajoutés
   isLive        : false,                                        // Le script est en cours d'execution
   isFetching    : false,                                        // La page est en train d'être récupérée pour traitement
@@ -128,12 +126,13 @@ let page = {
   isNotifying   : false,                                        // Une notification a été envoyé il y a peu de temps
   isScrolling   : false,                                        // Un ordre de défilement a déjà été envoyé à la page
   isMerging     : false,                                        // La page suivante est en train d'être intégrée
+  isLocked      : !document.hop,                                // Le sujet est verrouillé
   autoScroll    : true,                                         // La page défile automatiquement
   notifications : [],                                           // File d'attente des notifications
   get next() {                                                  // Page suivante
     return $(page.fetched).find(".pagepresuiv:first a");
   },
-  get isLast() {                                                // La page actuelle est la dernière du topic
+  get isLast() { // La page actuelle est la dernière du topic
     return page.next.length == 0;
   },
 
@@ -177,27 +176,25 @@ let page = {
       console.log("+ " + debug(newFetchedTable.get(messageIndex)));
     }
     page.fetchedTable = newFetchedTable;
+    page.checkLock();
     page.update();
   },
 
   /* Intégrer la page suivante à la page en cours */
   addNextPage(data) {
     ++page.mergeCounter;
-    GM.setValue(`${page.cat}&${page.subcat}&${page.post}`, parseInt(page.index) + page.mergeCounter);
+    GM.setValue(`${page.cat}&${page.post}`, parseInt(page.index) + page.mergeCounter);
     history.pushState(null, null, page.url);
     let messageIndex = 1;
     page.fetched = $.parseHTML(data);
     page.fetchedTable = $(page.fetched).find(".messagetable");
-    // Ajout de l'indicateur de changement de page :
-    let separator = $(".fondForum2PagesBas").parent().parent().get(0).cloneNode(true);
-    separator.className = "hfr-live-new-page messagetable";
-    $(separator).find("tr").get(0).innerHTML = "Page " + $(page.fetched).find(".cBackHeader b").last().text();
-    page.queue.push(separator);
+    page.addAlert(`Page ${$(page.fetched).find(".cBackHeader b").last().text()}`);
     console.log("new: " + page.fetchedTable.length);
     for (; messageIndex < page.fetchedTable.length; ++messageIndex) {
       page.queue.push(page.fetchedTable.get(messageIndex));
       console.log("+ " + debug(page.fetchedTable.get(messageIndex)));
     }
+    
     // Mise à jour des bandeaux de navigations :
     let newTopRow = $(page.fetched).find(".fondForum2PagesHaut");
     let oldTopRow = $(".fondForum2PagesHaut");
@@ -210,9 +207,28 @@ let page = {
     $(".fondForum2PagesBas .pagepresuiv").last().after(newButton());
 
     page.isMerging = false;
+    page.checkLock();
     page.update();
   },
 
+  /* Ajouter un message d'information en provenance du script */
+  addAlert(content) {
+    let alert = $(".fondForum2PagesBas").parent().parent().get(0).cloneNode(true);
+    alert.className = "hfr-live-alert messagetable";
+    alert.style.lineHeight = 2;
+    $(alert).find("tr").get(0).innerHTML = content;
+    page.queue.push(alert);
+  },
+  
+  /* Vérifier si la page récupérée a été verrouillée ou dévérouillée */
+  checkLock() {
+    let isLocked = !$(page.fetched).find("form[name='hop']").get(0);
+    if (isLocked != page.isLocked) {
+      page.isLocked = isLocked;
+      page.addAlert(`Le sujet a été ${isLocked?"":"dé"}vérouillé`);
+    } 
+  },
+  
   /* Demander le traitement de la file d'attente */
   update() {
      if (!page.isUpdating) {
@@ -227,7 +243,7 @@ let page = {
     if (message) {
       page.lastMessage.after(message);
       console.log("- " + debug(message));
-      if (!message.classList.contains("hfr-live-new-page")) {
+      if (!message.classList.contains("hfr-live-alert")) {
       // Le message n'est pas un indicateur de nouvelle page
         repairLink(message);
         $(message).hide().fadeIn(config.fadeInTime);
@@ -373,7 +389,7 @@ let page = {
         if (icon && config.notification.avatar) option.icon = icon;
       }
       if (config.notification.topic) title += ` ${config.notification.separator} ${page.topic}`;
-      displayNotification(title, option);
+      displayNotification(title, option, message);
 
       if (config.notification.merge) {
         setTimeout(page.processNotificationQueue, config.notification.interval);
@@ -386,6 +402,9 @@ let page = {
   },
 }
 
+page.post = page.responseUrl.replace(/.*&post=(\d+).*/g, "$1");
+page.cat  = page.responseUrl.replace(/.*&cat=(\d+).*/g,  "$1");
+
 /* Réparer les liens d'un message ajouté */
 function repairLink(message) {
   let quoteButton = $(message).find("img[alt='answer']").get(0);
@@ -394,7 +413,7 @@ function repairLink(message) {
 
 /* Renvoyer le lien pour citer un message */
 function getURL(message) {
-  return page.href.replace("[...]", getID(message));
+  return page.responseUrl.replace(/&numrep=\d+&/g,`&numrep=${getID(message)}&`);
 }
 
 /* Renvoyer l'ID d'un message */
@@ -428,14 +447,16 @@ function formatBody(message) {
 }
 
 /* Afficher une notification */
-function displayNotification(title, option) {
+function displayNotification(title, option, message) {
   if (Notification.permission == "granted") {
     let n = new Notification(title, option);
+    if (message) n.onclick = () => message.scrollIntoView();
     setTimeout(n.close.bind(n), config.notification.duration);
   } else if (Notification.permission != "denied") {
     Notification.requestPermission().then( (result) => {
       if (result == "granted") {
         let n = new Notification(title, option);
+        if (message) n.onclick = () => message.scrollIntoView();
         setTimeout(n.close.bind(n), config.notification.duration);
       }
     });
@@ -453,7 +474,7 @@ function toggleScript() {
   if (page.isLive) {
     page.fetch();
     page.fetchTimer = setInterval(page.fetch, config.fetchInterval);
-    GM.setValue(`${page.cat}&${page.subcat}&${page.post}`, parseInt(page.index) + page.mergeCounter);
+    GM.setValue(`${page.cat}&${page.post}`, parseInt(page.index) + page.mergeCounter);
     $(".hfr-live-button").each((i,el) => {
       el.setAttribute("on",true);
       el.title = "Désactiver [HFR] Live";
@@ -462,7 +483,7 @@ function toggleScript() {
     if (config.favicon) page.changeFavicon(FAVICON_LIVE);
   } else {
     clearInterval(page.fetchTimer);
-    GM.deleteValue(`${page.cat}&${page.subcat}&${page.post}`);
+    GM.deleteValue(`${page.cat}&${page.post}`);
     $(".hfr-live-button").each((i,el) => {
       el.setAttribute("on",false);
       el.title = "Activer [HFR] Live";
@@ -680,12 +701,12 @@ lock.lock();
 
 /* Vérification de l'état du script au chargement de la page */
 (async () => {
-  let savedPage = await GM.getValue(`${page.cat}&${page.subcat}&${page.post}`);
+  let savedPage = await GM.getValue(`${page.cat}&${page.post}`);
 
   if (savedPage == parseInt(page.index)-1) {
     // Si le script était actif dans la page précédente, l'activer le script pour cette page
     ++savedPage;
-    GM.setValue(`${page.cat}&${page.subcat}&${page.post}`, savedPage);
+    GM.setValue(`${page.cat}&${page.post}`, savedPage);
 
     if (page.isLast) {
       while ($(".messagetable").get(1)) {
@@ -708,7 +729,7 @@ lock.lock();
   if (savedPage == parseInt(page.index)) {
     toggleScript();
   } else {
-    GM.deleteValue(`${page.cat}&${page.subcat}&${page.post}`);
+    GM.deleteValue(`${page.cat}&${page.post}`);
   }
 })();
 
