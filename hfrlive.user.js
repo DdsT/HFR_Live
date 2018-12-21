@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.3
+// @version        0.1.4
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -163,6 +163,7 @@ let page = {
   /* Ajouter les nouveaux messages à la page en cours */
   addFetchedPage(data) {
     page.fetched = $.parseHTML(data);
+    page.checkLock(false);
     let newFetchedTable = $(page.fetched).find(".messagetable");
     let messageIndex = page.fetchedTable.length;
     console.log("old: " + page.fetchedTable.length + " " + getID(page.fetchedTable.get(messageIndex-1))
@@ -176,7 +177,7 @@ let page = {
       console.log("+ " + debug(newFetchedTable.get(messageIndex)));
     }
     page.fetchedTable = newFetchedTable;
-    page.checkLock();
+    page.checkLock(true);
     page.update();
   },
 
@@ -187,6 +188,7 @@ let page = {
     history.pushState(null, null, page.url);
     let messageIndex = 1;
     page.fetched = $.parseHTML(data);
+    page.checkLock(false);
     page.fetchedTable = $(page.fetched).find(".messagetable");
     page.addAlert(`Page ${$(page.fetched).find(".cBackHeader b").last().text()}`);
     console.log("new: " + page.fetchedTable.length);
@@ -207,7 +209,7 @@ let page = {
     $(".fondForum2PagesBas .pagepresuiv").last().after(newButton());
 
     page.isMerging = false;
-    page.checkLock();
+    page.checkLock(true);
     page.update();
   },
 
@@ -220,10 +222,10 @@ let page = {
     page.queue.push(alert);
   },
   
-  /* Vérifier si la page récupérée a été verrouillée ou dévérouillée */
-  checkLock() {
+  /* Vérifier si la page récupérée a été verrouillée (true) ou dévérouillée (false) */ 
+  checkLock(lockStatus) {
     let isLocked = !$(page.fetched).find("form[name='hop']").get(0);
-    if (isLocked != page.isLocked) {
+    if (isLocked == lockStatus && isLocked != page.isLocked) {
       page.isLocked = isLocked;
       page.addAlert(`Le sujet a été ${isLocked?"":"dé"}vérouillé`);
     } 
@@ -368,6 +370,7 @@ let page = {
 
     let message = page.notifications.shift();
     if (message) {
+      let firstMessage = message;
       let title = 0;
       let option = {body:""};
       if (page.notifications.length) {
@@ -389,7 +392,7 @@ let page = {
         if (icon && config.notification.avatar) option.icon = icon;
       }
       if (config.notification.topic) title += ` ${config.notification.separator} ${page.topic}`;
-      displayNotification(title, option, message);
+      displayNotification(title, option, firstMessage);
 
       if (config.notification.merge) {
         setTimeout(page.processNotificationQueue, config.notification.interval);
@@ -595,8 +598,6 @@ let control = document.createElement("div");
 GM.addStyle(`
   #hfr-live-control {
     position         : fixed;
-    display          : table-cell;
-    vertical-align   : middle;
     height           : 19px;
     border           : 1px solid rgb(0,0,0,0.2);
     background-color : rgb(255,255,255,0.9);
@@ -698,6 +699,133 @@ control.appendChild(newButton());
 document.body.appendChild(control);
 lock.lock();
 
+/* Création du panneau d'indication de nouveaux messages */
+let notificationPanel = document.createElement("div");
+let container = document.createElement("div");
+GM.addStyle(`
+  #hfr-live-notification {
+    position    : fixed;
+    left        : 0;
+    right       : 0;
+    font-family : Verdana,Arial,Sans-serif,Helvetica;
+    text-align  : center;
+  }
+
+  #hfr-live-notification>div {
+    margin           : 0 auto;
+    width            : 175px;
+    padding          : 3px;
+    border           : 1px solid rgb(0,0,0,0.2);
+    color            : #fff;
+    font-weight      : bold;
+    font-size        : small;
+  }
+  #hfr-live-notification[visible="true"] {
+    bottom : 10px;
+  }
+  #hfr-live-notification[visible="false"] {
+    bottom : -50px;
+  }
+  #hfr-live-notification[colorblind="true"]>div {
+    background-color : #32b1ff;
+  }
+  #hfr-live-notification[colorblind="false"]>div {
+    background-color : #4bc730;
+  }
+`);
+notificationPanel.id ="hfr-live-notification";
+notificationPanel.setAttribute("visible",false);
+notificationPanel.setAttribute("colorblind",config.colorBlind);
+container.innerHTML = "Nouveaux messages";
+notificationPanel.show = () => notificationPanel.setAttribute("visible",true);
+notificationPanel.hide = () => notificationPanel.setAttribute("visible",false);
+
+notificationPanel.appendChild(container);
+document.body.appendChild(notificationPanel);
+
+/* Récupère tous les noeuds après un élément */
+function getNextSiblings(element) {
+  let siblings = [];
+  while (element = element.nextSibling) siblings.push(element);
+  return siblings;
+}
+
+let bottomNodes = getNextSiblings($(".messagetable").last().get(0));
+bottomNodes.push($("center").get(0));
+
+/* Masquage des élements de bas de page */
+function hideBottom() {
+  for (element of bottomNodes) {
+    if (element.style) element.style.display = "none";
+  }
+}
+
+function showBottom() {
+  for (element of bottomNodes) {
+    if (element.style) element.style.display = "";
+  }
+}
+
+hideBottom();
+
+/* Création de la réponse rapide façon chat */
+let chatAnswer = document.createElement("div");
+let chatContainer = document.createElement("div");
+let chatPlaceholder = document.createElement("div");
+GM.addStyle(`
+  #hfr-live-chat {
+    background  : #bbb;
+    position    : fixed;
+    left        : 8px;
+    right       : 8px;
+    bottom      : 0;
+    font-family : Verdana,Arial,Sans-serif,Helvetica;
+    height      : 60px;
+    text-align  : center;
+  }
+
+  #hfr-live-chat .s2Ext {
+    width  : 98%;
+    margin : 0 auto;
+    background : grey;
+    border: 1px solid black;
+    box-sizing : border-box;
+  text-align  : left;
+  }
+
+  #hfr-live-placeholder {
+    height     : 49px;
+  }
+
+  #hfr-live-chat b, #hfr-live-chat br {
+    display : none;
+  }
+
+  #hfr-live-chat textarea {
+    resize : none;
+    width  : 50%;
+    box-sizing: border-box;  
+    height : 50px;
+    background-color: rgb(255,255,255,0.9);
+    border: 1px solid grey;
+  }
+`);
+chatAnswer.id ="hfr-live-chat";
+chatPlaceholder.id ="hfr-live-placeholder";
+chatAnswer.show = () => chatAnswer.setAttribute("visible",true);
+chatAnswer.hide = () => chatAnswer.setAttribute("visible",false);
+
+chatAnswer.appendChild(chatContainer);
+document.body.appendChild(chatAnswer);
+document.body.appendChild(chatPlaceholder);
+
+let chatForm = document.hop.cloneNode(true);
+chatForm.setAttribute("name", "chat");
+chatForm.setAttribute("onsubmit", "document.chat.submit.style.visibility='hidden';");
+chatForm.style.display = "";
+$(chatForm).find("textarea").removeClass();
+$(chatForm).find(".s2Ext").get(0).childNodes[6].remove();
+chatAnswer.appendChild(chatForm);
 
 /* Vérification de l'état du script au chargement de la page */
 (async () => {
