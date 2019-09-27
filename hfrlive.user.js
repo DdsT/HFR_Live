@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.4
+// @version        0.1.5
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -23,7 +23,7 @@
 // ==/UserScript==
 
 /*
-Copyright (C) 2018 DdsT
+Copyright (C) 2019 DdsT
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -43,7 +43,9 @@ along with this program.  If not, see https://ddst.github.io/hfr_ColorTag/LICENS
  * Rendre le défilement plus intuitif
  * Indicateur de nouveau message en bas de la page
  * Résoudre le problème d'affichage multiple
+ * Mettre la bonne page lors d'une réponse rapide
  * Gérer les cas de suppression de message
+ * Indicateur de nouveau message privé
  * Fenêtre de configuration
  * Beta-test
  * Test de compatibilité multi-navigateur
@@ -65,15 +67,19 @@ let config = {
   control         : true,  // Un panneau de contrôle apparaît lorsque le script est activé
   controlRight    : true,  // Le panneau de contrôle est situé à droite
   controlBottom   : false, // Le panneau de contrôle est situé en bas de la page
-  controlAlwaysOn : false, // Le panneau de contrôle est toujours affichés
+  controlAlwaysOn : true,  // Le panneau de contrôle est toujours affichés
   favicon         : true,  // L'icône de la page change lors de l'activation du script
   unreadIndicator : true,  // Indiquer les messages non-lus dans le titre
-  unreadIcon      : "🔔",  // Icône d'indication de messages non lus
+  quotedIndicator : true,  // Indiquer si on a été cité dans le titre
+  pmIndicator     : true,  // Indiquer la présence d'un MP
+  unreadIcon      : "🔔",  // Icône d'indication de messages non lus , variantes possibles : 👋🗣️💡⚡🔴🚩
+  quotedIcon      : "💬",  // Icône d'indication de citation/réponse , variantes possibles : 🗨️📑📃📜📄
+  pmIcon          : "✉️",  // Icône d'indication de MP, variantes possibles : 📧📩📨📥📫
   // Paramètres de défilement
   scroll          : {
     duration      : 2000,  // Durée de base de l'animation de défilement
     onBlur        : true,  // La page défile aussi quand l'utilisateur n'est pas sur la page
-    autoResume    : true,  // Le défilement reprend automatiquement après avoir été interrompu par l'utilisateur
+    autoResume    : false,  // Le défilement reprend automatiquement après avoir été interrompu par l'utilisateur
     pauseDuration : 2000,  // Délai de reprise du défilement automatique après une action de l'utilisateur
     resumeToLast  : false, // La page défile automatiquement jusqu'au dernier message à la reprise du défilement automatique
   },
@@ -107,17 +113,21 @@ const UNLOCKED_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAY
 const LOCKED_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAJ/SURBVDjLbVJBaxNBGH2bpEkTmxi1NTRKTZtoQUHEWz0Igj2I4kG9eVNQhEBO7bEHc+yv8JAiHnr2B4gFqVrQRhObljQolBSTJqZJdnZmfbNr2rU68DEz33zfm/fejGHbNrxjaWlpRCk1J6WcYZxkgPGTsWJZ1mIul/vlrTe8AIVC4Qqbl5PJ5GQsFoPP5wP36PV6qNfr2OIg0L35+fm1fwDYPMLDj+l0OmOaJmq1Gjqdjr4dgUAAiUTCqSsWixvMXV5YWOjqvW+AxOSz8fHxjBAC5XJ5s91up7gO6tDrUqn0QwOTXYZSsoO+wGDB5EwkEkGlUgGb7mSz2apHajWfz9+sVqvFVCrl1P4PYExr5m16vYUjQ+c0O11DtmN/ebD95pG9UpnGzl7Y0Xz30ir8toAtLdiWG0JIvFi76piaGG7g9plVTD/5YLgMCPLg/g0YtMTwhznfApRBfsP6kAYJSKuN57Md5oXTsvHy7aEEfZMutHZfIRAahWGMsHAICMeZVsD+HmTrG8zudyhrH+HJLGyz7wEgRSh9k4nm+nvqPIb4xWuovV5k/2lMXJ9F8+s6ARqIpk6QsIQtTC+AcGTYpBqfvgBfcJTuKMi+xKfdMCZgIp6eRK8TYu2+w2oA4PwDm+5qVK218XmNLN7xxILqKfS7pGqTWekLmuVtV65STs8hA73RqJQQP5+CP3KKACamHj7FlGBDawfH00kEW0MuA8o9AmA6qMrSHqwTIAoM08hAkHkN0ES3UYfotBGdiNFu5cr2AmgJobOPET7nhxEMuU/o40soSjO7iHbbVNgnUen6pY0/AOCTbC7PuV44H0f8Cetg5g9zP5aU7loDcfwGcrKyzYdvwUUAAAAASUVORK5CYII=";
 /* Icons by Mark James - http://www.famfamfam.com/lab/icons/silk/ - CC BY 2.5 - https://creativecommons.org/licenses/by/2.5/ */
 
+const PSEUDO = $("input[name='pseudo']").attr("value");
+
 let page = {
   title         : document.title,
   responseUrl   : String($(".message").find("a[href^='/mess']") // Modèle pour générer les réponses manquantes des messages ajoutés
                                       .attr("href")),
   topic         : $(".fondForum2Title").find("h3").text(),      // Titre du sujet
   unread        : 0,                                            // Nombre de messages non lus
+  quoted        : false,                                        // Un message non-lu cite le pseudo
   queue         : [],                                           // File d'attente des messages restant à ajouter à la page
   lastMessage   : $(".messagetable").last(),                    // Dernier message actuellement présent sur la page
   fetched       : $(document),                                  // Dernière version de la page
   fetchedTable  : $(".messagetable"),                           // Liste des messages de la dernière version de la page
   url           : document.URL,                                 // URL de la page actuelle
+  urlAnchor     : document.URL.match(/#(t\d+)$/),               // message pointé par l'URL
   index         : $(".cBackHeader").find("b").last().text(),    // Numéro de la page actuelle
   mergeCounter  : 0,                                            // Nombre de pages ajoutés
   isLive        : false,                                        // Le script est en cours d'execution
@@ -196,7 +206,6 @@ let page = {
       page.queue.push(page.fetchedTable.get(messageIndex));
       console.log("+ " + debug(page.fetchedTable.get(messageIndex)));
     }
-    
     // Mise à jour des bandeaux de navigations :
     let newTopRow = $(page.fetched).find(".fondForum2PagesHaut");
     let oldTopRow = $(".fondForum2PagesHaut");
@@ -249,7 +258,8 @@ let page = {
       // Le message n'est pas un indicateur de nouvelle page
         repairLink(message);
         $(message).hide().fadeIn(config.fadeInTime);
-        if (config.unreadIndicator) page.updateTitle();
+        if (config.quotedIndicator) page.quoted = page.quoted || hasPseudo(message);
+        if (config.unreadIndicator || config.quotedIndicator) page.updateTitle();
         if(config.notification.enabled
            && ("Notification" in window)
            && (!document.hasFocus() || config.notification.onfocus)) {
@@ -273,6 +283,7 @@ let page = {
           page.url = page.next.attr("href");
           page.isMerging = true;
           console.log("page merge...");
+          page.requestScroll();
         } else {
           if (config.changePage) page.goNext();
         }
@@ -290,10 +301,12 @@ let page = {
   scroll() {
     $("html, body").stop(); // Arrêt du défilement en cours
     let ease = (page.queue) ? "linear" : "swing"; // Utiliser une vitesse de défilement constante en cas de messages multiples
-    $("html, body").on(USER_ACTION, page.pauseScroll); // Arrêt temporaire du défilement si action de l'utilisateur
-    if (document.hasFocus() || config.scroll.onBlur) {
+    $("html, body").on(USER_ACTION, page.stopAutoScroll); // Arrêt temporaire du défilement si action de l'utilisateur
+    if (false) { // (document.hasFocus() || config.scroll.onBlur) {
       $("html, body").animate({scrollTop: page.lastMessage.offset().top}, config.scroll.duration, ease, page.endScroll);
     } else {
+      window.scrollTo(0,$("#md_fast_search").offset().top+$("#md_fast_search").get(0).offsetHeight-$(window).height());
+      console.log("scrolling...");
       page.endScroll();
     }
   },
@@ -304,6 +317,7 @@ let page = {
   },
 
   /* Arrêt temporaire du défilement automatique */
+  /* TBD */
   pauseScroll() {
     if (config.scroll.autoResume) {
       page.autoScroll = false;
@@ -336,10 +350,11 @@ let page = {
   updateTitle() {
     if (document.hasFocus()) {
       page.unread = 0;
+      page.quoted = false;
       document.title = page.title;
     } else {
       page.unread++;
-      document.title = `${page.unread} ${config.unreadIcon} ${page.title}`;
+      document.title = `${(config.unreadIndicator) ? page.unread + " " + config.unreadIcon : ""}${(page.quoted) ? config.quotedIcon : ""} ${page.title}`;
     }
   },
 
@@ -408,7 +423,7 @@ let page = {
 page.post = page.responseUrl.replace(/.*&post=(\d+).*/g, "$1");
 page.cat  = page.responseUrl.replace(/.*&cat=(\d+).*/g,  "$1");
 
-/* Réparer les liens d'un message ajouté */
+/* Réparer le lien de citation d'un message ajouté */
 function repairLink(message) {
   let quoteButton = $(message).find("img[alt='answer']").get(0);
   $(quoteButton).wrap(`<a href ="${getURL(message)}"></a>`);
@@ -421,7 +436,12 @@ function getURL(message) {
 
 /* Renvoyer l'ID d'un message */
 function getID(message) {
-  return $(message).find("a[name^='t']").attr("name");
+  return $(message).find("a[name^='t']").attr("name").substring(1);
+}
+
+/* Vérifie si un message contient une citation du pseudo */
+function hasPseudo(message) {
+  return PSEUDO == $(message).find(".citation b.s1>a").text().replace(" a écrit :","");
 }
 
 /* Formatter le texte pour la notification */
@@ -743,96 +763,13 @@ notificationPanel.hide = () => notificationPanel.setAttribute("visible",false);
 notificationPanel.appendChild(container);
 document.body.appendChild(notificationPanel);
 
-/* Récupère tous les noeuds après un élément */
-function getNextSiblings(element) {
-  let siblings = [];
-  while (element = element.nextSibling) siblings.push(element);
-  return siblings;
-}
-
-let bottomNodes = getNextSiblings($(".messagetable").last().get(0));
-bottomNodes.push($("center").get(0));
-
-/* Masquage des élements de bas de page */
-function hideBottom() {
-  for (element of bottomNodes) {
-    if (element.style) element.style.display = "none";
-  }
-}
-
-function showBottom() {
-  for (element of bottomNodes) {
-    if (element.style) element.style.display = "";
-  }
-}
-
-hideBottom();
-
-/* Création de la réponse rapide façon chat */
-let chatAnswer = document.createElement("div");
-let chatContainer = document.createElement("div");
-let chatPlaceholder = document.createElement("div");
-GM.addStyle(`
-  #hfr-live-chat {
-    background  : #bbb;
-    position    : fixed;
-    left        : 8px;
-    right       : 8px;
-    bottom      : 0;
-    font-family : Verdana,Arial,Sans-serif,Helvetica;
-    height      : 60px;
-    text-align  : center;
-  }
-
-  #hfr-live-chat .s2Ext {
-    width  : 98%;
-    margin : 0 auto;
-    background : grey;
-    border: 1px solid black;
-    box-sizing : border-box;
-  text-align  : left;
-  }
-
-  #hfr-live-placeholder {
-    height     : 49px;
-  }
-
-  #hfr-live-chat b, #hfr-live-chat br {
-    display : none;
-  }
-
-  #hfr-live-chat textarea {
-    resize : none;
-    width  : 50%;
-    box-sizing: border-box;  
-    height : 50px;
-    background-color: rgb(255,255,255,0.9);
-    border: 1px solid grey;
-  }
-`);
-chatAnswer.id ="hfr-live-chat";
-chatPlaceholder.id ="hfr-live-placeholder";
-chatAnswer.show = () => chatAnswer.setAttribute("visible",true);
-chatAnswer.hide = () => chatAnswer.setAttribute("visible",false);
-
-chatAnswer.appendChild(chatContainer);
-document.body.appendChild(chatAnswer);
-document.body.appendChild(chatPlaceholder);
-
-let chatForm = document.hop.cloneNode(true);
-chatForm.setAttribute("name", "chat");
-chatForm.setAttribute("onsubmit", "document.chat.submit.style.visibility='hidden';");
-chatForm.style.display = "";
-$(chatForm).find("textarea").removeClass();
-$(chatForm).find(".s2Ext").get(0).childNodes[6].remove();
-chatAnswer.appendChild(chatForm);
 
 /* Vérification de l'état du script au chargement de la page */
 (async () => {
   let savedPage = await GM.getValue(`${page.cat}&${page.post}`);
 
   if (savedPage == parseInt(page.index)-1) {
-    // Si le script était actif dans la page précédente, l'activer le script pour cette page
+    // Si le script était actif dans la page précédente, l'activer pour cette page
     ++savedPage;
     GM.setValue(`${page.cat}&${page.post}`, savedPage);
 
@@ -853,12 +790,12 @@ chatAnswer.appendChild(chatForm);
     }
   }
 
-  // Si le script a déja été activé pour cette page, lancer le script en activant le bouton
-  if (savedPage == parseInt(page.index)) {
+  if (savedPage == parseInt(page.index) && !(page.urlAnchor && $(`a[name="${page.urlAnchor[1]}]`).closest(".messagetable").next(".messagetable").get(0))) {
+    // Si le script a déja été activé pour cette page et qu'il n'y a pas de nouveau message depuis la dernière visite, lancer le script en activant le bouton
     toggleScript();
   } else {
     GM.deleteValue(`${page.cat}&${page.post}`);
   }
 })();
 
-if (config.unreadIndicator) window.addEventListener("focus", page.updateTitle);
+if (config.unreadIndicator || config.quotedIndicator) window.addEventListener("focus", page.updateTitle);
