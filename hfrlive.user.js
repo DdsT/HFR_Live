@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.5
+// @version        0.1.6
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -79,9 +79,9 @@ let config = {
   scroll          : {
     duration      : 2000,  // Durée de base de l'animation de défilement
     onBlur        : true,  // La page défile aussi quand l'utilisateur n'est pas sur la page
-    autoResume    : false,  // Le défilement reprend automatiquement après avoir été interrompu par l'utilisateur
-    pauseDuration : 2000,  // Délai de reprise du défilement automatique après une action de l'utilisateur
-    resumeToLast  : false, // La page défile automatiquement jusqu'au dernier message à la reprise du défilement automatique
+    autoResume    : false,  // Reprise du défilement automatique lors d'un noveau message si on se situe en bas de page
+    resumeToLast  : false, // La page défile automatiquement jusqu'au dernier message à la reprise manuelle du défilement automatique
+    mode          : 0,     // mode de défilement. 0: haut du message en haut de la fenêtre, 1: bas du message en bas de la fenêtre, 2: bouton de validation en bas de la fenêtre
   },
   // Paramètres de notification
   notification    : {
@@ -119,26 +119,27 @@ let page = {
   title         : document.title,
   responseUrl   : String($(".message").find("a[href^='/mess']") // Modèle pour générer les réponses manquantes des messages ajoutés
                                       .attr("href")),
-  topic         : $(".fondForum2Title").find("h3").text(),      // Titre du sujet
-  unread        : 0,                                            // Nombre de messages non lus
-  quoted        : false,                                        // Un message non-lu cite le pseudo
-  queue         : [],                                           // File d'attente des messages restant à ajouter à la page
-  lastMessage   : $(".messagetable").last(),                    // Dernier message actuellement présent sur la page
-  fetched       : $(document),                                  // Dernière version de la page
-  fetchedTable  : $(".messagetable"),                           // Liste des messages de la dernière version de la page
-  url           : document.URL,                                 // URL de la page actuelle
-  urlAnchor     : document.URL.match(/#(t\d+)$/),               // message pointé par l'URL
-  index         : $(".cBackHeader").find("b").last().text(),    // Numéro de la page actuelle
-  mergeCounter  : 0,                                            // Nombre de pages ajoutés
-  isLive        : false,                                        // Le script est en cours d'execution
-  isFetching    : false,                                        // La page est en train d'être récupérée pour traitement
-  isUpdating    : false,                                        // Des messages sont en train d'être ajoutés à la page
-  isNotifying   : false,                                        // Une notification a été envoyé il y a peu de temps
-  isScrolling   : false,                                        // Un ordre de défilement a déjà été envoyé à la page
-  isMerging     : false,                                        // La page suivante est en train d'être intégrée
-  isLocked      : !document.hop,                                // Le sujet est verrouillé
-  autoScroll    : true,                                         // La page défile automatiquement
-  notifications : [],                                           // File d'attente des notifications
+  topic                 : $(".fondForum2Title").find("h3").text(),      // Titre du sujet
+  unread                : 0,                                            // Nombre de messages non lus
+  quoted                : false,                                        // Un message non-lu cite le pseudo
+  queue                 : [],                                           // File d'attente des messages restant à ajouter à la page
+  lastMessage           : $(".messagetable").last(),                    // Dernier message actuellement présent sur la page
+  fetched               : $(document),                                  // Dernière version de la page
+  fetchedTable          : $(".messagetable"),                           // Liste des messages de la dernière version de la page
+  url                   : document.URL,                                 // URL de la page actuelle
+  urlAnchor             : document.URL.match(/#(t\d+)$/),               // message pointé par l'URL
+  index                 : $(".cBackHeader").find("b").last().text(),    // Numéro de la page actuelle
+  mergeCounter          : 0,                                            // Nombre de pages ajoutés
+  isLive                : false,                                        // Le script est en cours d'execution
+  isFetching            : false,                                        // La page est en train d'être récupérée pour traitement
+  isUpdating            : false,                                        // Des messages sont en train d'être ajoutés à la page
+  isNotifying           : false,                                        // Une notification a été envoyé il y a peu de temps
+  isScrolling           : false,                                        // Un ordre de défilement a déjà été envoyé à la page
+  isMerging             : false,                                        // La page suivante est en train d'être intégrée
+  isLocked              : !document.hop,                                // Le sujet est verrouillé
+  autoScroll            : true,                                         // La page défile automatiquement
+  resumeScrollRequested : false,                                        // Le défilement automatique rependra au prochain message
+  notifications         : [],                                           // File d'attente des notifications
   get next() {                                                  // Page suivante
     return $(page.fetched).find(".pagepresuiv:first a");
   },
@@ -154,6 +155,7 @@ let page = {
 
   /* Demander la dernière version de la page et rajouter les nouveaux messages dans la pile */
   fetch() {
+    clearNewMessages();
     if (!page.isFetching) {
       page.isFetching = true;
       $.get(page.url, {complete: page.endFetch}, page.succeedFetch);
@@ -176,15 +178,15 @@ let page = {
     page.checkLock(false);
     let newFetchedTable = $(page.fetched).find(".messagetable");
     let messageIndex = page.fetchedTable.length;
-    console.log("old: " + page.fetchedTable.length + " " + getID(page.fetchedTable.get(messageIndex-1))
-               +" new: " + newFetchedTable.length + " " + getID(newFetchedTable.get(messageIndex-1))
-               );
+    //console.log("old: " + page.fetchedTable.length + " " + getID(page.fetchedTable.get(messageIndex-1))
+    //           +" new: " + newFetchedTable.length + " " + getID(newFetchedTable.get(messageIndex-1))
+    //           );
     if (getID(page.fetchedTable.get(messageIndex-1)) != getID(newFetchedTable.get(messageIndex-1))) {
-      console.log("Deletion detected !");
+      //console.log("Deletion detected !");
     }
     for (; messageIndex < newFetchedTable.length; ++messageIndex) {
       page.queue.push(newFetchedTable.get(messageIndex));
-      console.log("+ " + debug(newFetchedTable.get(messageIndex)));
+      //console.log("+ " + debug(newFetchedTable.get(messageIndex)));
     }
     page.fetchedTable = newFetchedTable;
     page.checkLock(true);
@@ -201,10 +203,10 @@ let page = {
     page.checkLock(false);
     page.fetchedTable = $(page.fetched).find(".messagetable");
     page.addAlert(`Page ${$(page.fetched).find(".cBackHeader b").last().text()}`);
-    console.log("new: " + page.fetchedTable.length);
+    //console.log("new: " + page.fetchedTable.length);
     for (; messageIndex < page.fetchedTable.length; ++messageIndex) {
       page.queue.push(page.fetchedTable.get(messageIndex));
-      console.log("+ " + debug(page.fetchedTable.get(messageIndex)));
+      //console.log("+ " + debug(page.fetchedTable.get(messageIndex)));
     }
     // Mise à jour des bandeaux de navigations :
     let newTopRow = $(page.fetched).find(".fondForum2PagesHaut");
@@ -253,11 +255,13 @@ let page = {
     let message = page.queue.shift();
     if (message) {
       page.lastMessage.after(message);
-      console.log("- " + debug(message));
+      //console.log("- " + debug(message));
       if (!message.classList.contains("hfr-live-alert")) {
       // Le message n'est pas un indicateur de nouvelle page
         repairLink(message);
         $(message).hide().fadeIn(config.fadeInTime);
+        clearHighlight();
+        if (!page.autoScroll) setNew(message);
         if (config.quotedIndicator) page.quoted = page.quoted || hasPseudo(message);
         if (config.unreadIndicator || config.quotedIndicator) page.updateTitle();
         if(config.notification.enabled
@@ -272,7 +276,7 @@ let page = {
       if (document.hasFocus() && page.isLast) {
         setTimeout(page.processQueue, config.messageInterval);
       } else {
-      //Pas de temporisation hors focus car les navigateurs fixent le minimum à une seconde
+      //Pas de temporisation hors focus car les navigateurs fixent le minimum à 1 s dans ce cas de figure
         page.processQueue();
       }
     } else {
@@ -282,7 +286,7 @@ let page = {
         // La page suivante va être intégrée à la page actuelle
           page.url = page.next.attr("href");
           page.isMerging = true;
-          console.log("page merge...");
+          //console.log("page merge...");
           page.requestScroll();
         } else {
           if (config.changePage) page.goNext();
@@ -294,41 +298,43 @@ let page = {
   /* Demander de faire défiler la page */
   requestScroll() {
     page.isScrolling = true;
+    if (page.resumeScrollRequested) page.resumeAutoScroll();
     if (page.autoScroll) page.scroll();
   },
 
   /* Faire défiler la page jusqu'au dernier message */
-  scroll() {
+  scroll(...message) {
     $("html, body").stop(); // Arrêt du défilement en cours
+    let target   = page.lastMessage;
+    let duration = config.scroll.duration;
+    
+    if (message.length && message[0]) {
+      target   = message[0];
+      duration = 500;
+    };
+
     let ease = (page.queue) ? "linear" : "swing"; // Utiliser une vitesse de défilement constante en cas de messages multiples
-    $("html, body").on(USER_ACTION, page.stopAutoScroll); // Arrêt temporaire du défilement si action de l'utilisateur
-    if (false) { // (document.hasFocus() || config.scroll.onBlur) {
-      $("html, body").animate({scrollTop: page.lastMessage.offset().top}, config.scroll.duration, ease, page.endScroll);
+    $("html, body").on(USER_ACTION, page.stopAutoScroll); // Arrêt du défilement si action de l'utilisateur
+    if (document.hasFocus() || config.scroll.onBlur) {
+      if (message.length && message[0]) {
+        $("html, body").animate({scrollTop: target.offset().top}, duration, ease, page.endScroll); //haut message -> haut fenêtre
+      } else {
+        switch (config.scroll.mode) {
+          case 0 : $("html, body").animate({scrollTop: target.offset().top}, duration, ease, page.endScroll); break; //haut message -> haut fenêtre
+          case 1 : $("html, body").animate({scrollTop: target.offset().top + target.get(0).offsetHeight -$(window).height()}, duration, ease, page.endScroll); break; //bas message -> bas fenêtre
+          case 2 : window.scrollTo(0,$("#md_fast_search").offset().top+$("#md_fast_search").get(0).offsetHeight-$(window).height()); break; // bas bouton validation -> bas fenêtre
+          default: $("html, body").animate({scrollTop: target.offset().top}, duration, ease, page.endScroll); //haut message -> haut fenêtre
+        } 
+      }
     } else {
-      window.scrollTo(0,$("#md_fast_search").offset().top+$("#md_fast_search").get(0).offsetHeight-$(window).height());
-      console.log("scrolling...");
       page.endScroll();
     }
   },
 
   endScroll() {
     $("html, body").off(USER_ACTION);
+    clearNewMessages();
     page.isScrolling = false;
-  },
-
-  /* Arrêt temporaire du défilement automatique */
-  /* TBD */
-  pauseScroll() {
-    if (config.scroll.autoResume) {
-      page.autoScroll = false;
-      $("html, body").stop();
-      $("html, body").off(USER_ACTION);
-      lock.pause();
-      if (page.pauseTimer) clearTimeout(page.pauseTimer);
-      page.pauseTimer = setTimeout(page.resumeAutoScroll, config.scroll.pauseDuration);
-    } else {
-      page.stopAutoScroll();
-    }
   },
 
   /* Arrêt définitif du défilement automatique */
@@ -336,16 +342,29 @@ let page = {
     page.autoScroll = false;
     $("html, body").stop();
     $("html, body").off(USER_ACTION);
+    if (config.scroll.autoResume) page.startBottomObserver();
     lock.unlock();
   },
 
   /* Reprise du défilement automatique */
   resumeAutoScroll() {
     page.autoScroll = true;
+    page.resumeScrollRequested = false;
+    if (config.scroll.autoResume) page.endBottomObserver();
     lock.lock();
-    if (config.scroll.resumeToLast && page.isScrolling) page.scroll();
+    if (config.scroll.resumeToLast) page.requestScroll();
   },
-
+  
+  /*  */
+  startBottomObserver() {
+    $(window).scroll(resumeScrollObserver);
+  },
+  
+  /*  */
+  endBottomObserver() {
+    $(window).off("scroll",resumeScrollObserver);
+  },
+  
   /* Mettre à jour le titre de la page */
   updateTitle() {
     if (document.hasFocus()) {
@@ -441,7 +460,7 @@ function getID(message) {
 
 /* Vérifie si un message contient une citation du pseudo */
 function hasPseudo(message) {
-  return PSEUDO == $(message).find(".citation b.s1>a").text().replace(" a écrit :","");
+  return $(message).find(".citation b.s1>a").text().replace(" a écrit :","").includes(PSEUDO);
 }
 
 /* Formatter le texte pour la notification */
@@ -485,6 +504,7 @@ function displayNotification(title, option, message) {
     });
   }
 }
+
 
 /* Fonction de débogage */
 function debug(message) {
@@ -668,44 +688,70 @@ control.setAttribute("visible",false || config.controlAlwaysOn);
 control.show = () => control.setAttribute("visible",true);
 control.hide = () => control.setAttribute("visible",false || config.controlAlwaysOn);
 
-/* Arrêter ou Reprendre le défilement automatique */
-control.toggleScroll = () => {
-  if (lock.getAttribute("locked") == "true") {
-    page.stopAutoScroll();
-    if (page.pauseTimer) clearTimeout(page.pauseTimer);
-  } else {
-    page.resumeAutoScroll();
-  }
-}
-
 let lock = document.createElement("img");
 GM.addStyle(`
   #hfr-live-lock {
     cursor     : pointer;
     transition : opacity 0.3s ease;
   }
-  #hfr-live-lock[paused="true"] {
-    opacity     : 0.3;
+  #hfr-live-lock[observer="false"] {
+    opacity : 1;
   }
-  #hfr-live-lock[paused="false"] {
-    opacity     : 1;
+  #hfr-live-lock[observer="true"] {
+    opacity : 0.5;
   }
 `);
 lock.id = "hfr-live-lock";
+lock.locked = true;
 lock.lock = () => {
   lock.src = LOCKED_ICON;
   lock.setAttribute("locked",true);
-  lock.setAttribute("paused",false);
+  lock.locked = true;
+  lock.setAttribute("observer",false);
   lock.title = "Désactiver le défilement automatique";
 }
 lock.unlock = () => {
   lock.src = UNLOCKED_ICON;
   lock.setAttribute("locked",false);
-  lock.setAttribute("paused",false);
+  lock.locked = false;
   lock.title = "Activer le défilement automatique";
 }
-lock.pause = () => lock.setAttribute("paused",true);
-lock.onclick = control.toggleScroll;
+lock.fade = () => {
+  lock.src = LOCKED_ICON;
+  lock.setAttribute("observer",true);
+}
+lock.unfade = () => {
+  lock.src = UNLOCKED_ICON;
+  lock.setAttribute("observer",false);
+}
+lock.onclick = () => {
+  console.log(lock.locked);
+  //if (lock.getAttribute("locked") == "true") {
+  if (lock.locked) {
+    console.log("unlocking");
+    page.stopAutoScroll();
+    console.log("unlocked");
+  } else {
+    console.log("locking");
+    page.resumeAutoScroll();
+    console.log("locked");
+  }
+};
+lock.lock();
+console.log(lock.locked);
+
+/* Gère la reprise du défilement automatique en fonction de la position de la page */
+function resumeScrollObserver() {
+   if($(window).scrollTop() + $(window).height() == $(document).height()) {
+     // Si le bas de la page est atteint, demande de reprise du défilement au prochain message
+     lock.fade();
+     page.resumeScrollRequested = true;
+   } else if (lock.getAttribute("observer") == "true") {
+     // Sinon retrait de la demande
+     lock.unfade();
+     page.resumeScrollRequested = false;
+   }
+}
 
 let configImage = document.createElement("img");
 configImage.src = COG_ICON;
@@ -720,10 +766,10 @@ document.body.appendChild(control);
 lock.lock();
 
 /* Création du panneau d'indication de nouveaux messages */
-let notificationPanel = document.createElement("div");
+let newMessagePanel = document.createElement("div");
 let container = document.createElement("div");
 GM.addStyle(`
-  #hfr-live-notification {
+  #hfr-live-new-panel {
     position    : fixed;
     left        : 0;
     right       : 0;
@@ -731,38 +777,109 @@ GM.addStyle(`
     text-align  : center;
   }
 
-  #hfr-live-notification>div {
-    margin           : 0 auto;
-    width            : 175px;
-    padding          : 3px;
-    border           : 1px solid rgb(0,0,0,0.2);
-    color            : #fff;
-    font-weight      : bold;
-    font-size        : small;
+  #hfr-live-new-panel>div {
+    margin        : 0 auto;
+    width         : 175px;
+    padding       : 3px;
+    border        : 1px solid rgb(0,0,0,0.2);
+    border-radius : 4px;
+    color         : #fff;
+    font-weight   : bold;
+    font-size     : small;
+    cursor        : pointer;
   }
-  #hfr-live-notification[visible="true"] {
+  #hfr-live-new-panel[visible="true"] {
     bottom : 10px;
   }
-  #hfr-live-notification[visible="false"] {
+  #hfr-live-new-panel[visible="false"] {
     bottom : -50px;
   }
-  #hfr-live-notification[colorblind="true"]>div {
+  #hfr-live-new-panel[colorblind="true"]>div {
     background-color : #32b1ff;
   }
-  #hfr-live-notification[colorblind="false"]>div {
+  #hfr-live-new-panel[colorblind="false"]>div {
     background-color : #4bc730;
   }
 `);
-notificationPanel.id ="hfr-live-notification";
-notificationPanel.setAttribute("visible",false);
-notificationPanel.setAttribute("colorblind",config.colorBlind);
+newMessagePanel.id ="hfr-live-new-panel";
+newMessagePanel.setAttribute("colorblind",config.colorBlind);
+newMessagePanel.newAmount = 0;
 container.innerHTML = "Nouveaux messages";
-notificationPanel.show = () => notificationPanel.setAttribute("visible",true);
-notificationPanel.hide = () => notificationPanel.setAttribute("visible",false);
+newMessagePanel.show = () => newMessagePanel.setAttribute("visible",true);
+newMessagePanel.hide = () => newMessagePanel.setAttribute("visible",false);
+newMessagePanel.update = () => {
+  if (newMessagePanel.newAmount == 0) {
+    newMessagePanel.hide();
+  } else {
+    newMessagePanel.show();
+    if (newMessagePanel.newAmount == 1) {
+    container.innerHTML = "Nouveau message";
+    } else {
+      container.innerHTML = newMessagePanel.newAmount + " Nouveaux messages";
+    }  
+  }
+}
 
-notificationPanel.appendChild(container);
-document.body.appendChild(notificationPanel);
+newMessagePanel.increase = () =>  {
+  ++newMessagePanel.newAmount;
+  newMessagePanel.update();
+}
+newMessagePanel.decrease = () =>  {
+  --newMessagePanel.newAmount;
+  newMessagePanel.update();
+}
 
+newMessagePanel.onclick = () =>  {
+  page.scroll($(".hfr-live-new"));
+}
+newMessagePanel.update();
+
+newMessagePanel.appendChild(container);
+document.body.appendChild(newMessagePanel);
+
+/* Marque un message comme nouveau et colorie sa bordure */
+function setNew(message) {
+  if ($(message).offset().top + $(message).get(0).offsetHeight > document.documentElement.scrollTop + $(window).height()) {
+    //Si le bas du message est situé plus bas que le bas de l'écran, le message est nouveau
+    $(message).addClass("hfr-live-new");
+    newMessagePanel.increase();
+  }
+  $(message).addClass("hfr-live-HL");
+}
+
+GM.addStyle(`
+  .hfr-live-HL .messCase1 {
+    border-left         : 2px solid !important;
+    border-left-color   : #4bc730 !important;
+  }
+`);
+
+/* Retire l'attribut nouveau des messages déjà visionnés et retire la bordure des messages hors écran */
+function clearNewMessages() {
+  $(".hfr-live-new").each(function(index) {
+    if ($(this).offset().top + $(this).get(0).offsetHeight <= document.documentElement.scrollTop + $(window).height()) {
+      //Si le bas d'un nouveau message est situé plus haut que le bas de l'écran, le message n'est plus nouveau
+      $(this).removeClass("hfr-live-new");
+      newMessagePanel.decrease();
+    }
+  });
+  $(".hfr-live-HL").each(function(index) {
+    if ($(this).offset().top + $(this).get(0).offsetHeight <= document.documentElement.scrollTop) {
+      //Si le bas d'un message marqué est situé plus haut que le haut de l'écran, le message n'est plus marqué
+      $(this).removeClass("hfr-live-HL");
+    }
+  });
+}
+
+/* Retire l'attribut marqué (bordure colorée) aux messages déjà visionnés */
+function clearHighlight() {
+  $(".hfr-live-HL").each(function(index) {
+    if ($(this).offset().top + $(this).get(0).offsetHeight <= document.documentElement.scrollTop + $(window).height()) {
+      //Si le bas d'un message marqué est plus situé haut que le bas de l'écran, le message n'est plus marqué
+      $(this).removeClass("hfr-live-HL");
+    }
+  });
+}
 
 /* Vérification de l'état du script au chargement de la page */
 (async () => {
@@ -790,7 +907,7 @@ document.body.appendChild(notificationPanel);
     }
   }
 
-  if (savedPage == parseInt(page.index) && !(page.urlAnchor && $(`a[name="${page.urlAnchor[1]}]`).closest(".messagetable").next(".messagetable").get(0))) {
+  if (savedPage == parseInt(page.index) && !(page.urlAnchor && (!page.isLast || $(`a[name="${page.urlAnchor[1]}"]`).closest(".messagetable").next(".messagetable").get(0)))) {
     // Si le script a déja été activé pour cette page et qu'il n'y a pas de nouveau message depuis la dernière visite, lancer le script en activant le bouton
     toggleScript();
   } else {
