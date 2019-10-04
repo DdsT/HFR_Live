@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.6
+// @version        0.1.7
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -75,11 +75,12 @@ let config = {
   unreadIcon      : "🔔",  // Icône d'indication de messages non lus , variantes possibles : 👋🗣️💡⚡🔴🚩
   quotedIcon      : "💬",  // Icône d'indication de citation/réponse , variantes possibles : 🗨️📑📃📜📄
   pmIcon          : "✉️",  // Icône d'indication de MP, variantes possibles : 📧📩📨📥📫
+  unreadHighlight : true,  // Mettre en valeur les messages non lus lors du chargement de la page
   // Paramètres de défilement
   scroll          : {
     duration      : 2000,  // Durée de base de l'animation de défilement
     onBlur        : true,  // La page défile aussi quand l'utilisateur n'est pas sur la page
-    autoResume    : false,  // Reprise du défilement automatique lors d'un noveau message si on se situe en bas de page
+    autoResume    : true,  // Reprise du défilement automatique lors d'un noveau message si on se situe en bas de page
     resumeToLast  : false, // La page défile automatiquement jusqu'au dernier message à la reprise manuelle du défilement automatique
     mode          : 0,     // mode de défilement. 0: haut du message en haut de la fenêtre, 1: bas du message en bas de la fenêtre, 2: bouton de validation en bas de la fenêtre
   },
@@ -104,9 +105,11 @@ let config = {
 
 this.$ = this.jQuery = jQuery.noConflict(true);
 
+const VERSION = GM.info.script.version;
+
 const FAVICON      = "https://forum.hardware.fr/favicon.ico";
 const FAVICON_LIVE = "data:image/x-icon;base64,AAABAAEAEBAAAAEACAAAAgAAFgAAAIlQTkcNChoKAAAADUlIRFIAAAAQAAAAEAgGAAAAH/P/YQAAAcdJREFUOI11kk1rE1EUhp+bzNTESCNqxU3xg260YCtpu5Cu3KgLKQVRQaJFFIuNcV0itIh2VywqIvh74kIFaZIigtViiC3MpJghyWQySa6LMmnn692d95znnHvvuWJu/YZs2DWsTouebLOc+sBFZYKDsoRB7nuW7eYfl59Qkyh6s9w3FkZf+OCW+MfTQppqcxuvTNtAcYLFsTUmY9OeySaZQprdABggrg4ScSZ74S1+8Hh9NhQGkLKL8jL1kQvKJV+yalUxTD0UBmh1Goh2ryPDCr62P7Py7Ulog9lzD/eu4KgudukJsx9PDEyxOLYWCM+cfUB6aH6/gSUMHn2ZIVuacxVOxqbJjb/xwfdP7p0s4sCZwl2srsnf+ia5zYwLSB26zPPxdwBcPX2nDwOImtRktnDPt+fzx6d4NfLe5e2ILU7JMy4vqt/8uaw1ynilmxVKVokrx673vSMc9dVFduq/faajDf0TmY3bSNENzL+trKDE1UFM2whtMpIcZYAeNlGXv/TrGUUtv/+Vg+S8tu35KavlJYpanlg0jhI2/eCqgiYDtLomyonDwzTsmqvo2vAt0kPzLk8VNq8rqxS1PHElASJKQk3yHwkYsIF88Iw+AAAAAElFTkSuQmCC";
-const USER_ACTION  = "scroll mousedown DOMMouseScroll mousewheel keyup";
+const USER_ACTION  = "scroll DOMMouseScroll mousewheel keyup";
 
 const COG_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAABkklEQVQoz1VRTUsCYRBe/AHe/Qn+j710EbKLVJcyiAqLLkWJkdkSUdChOpQRRWVRG6RQUqirtq7pupZRUvRxyOIlIU9ed5+mbSFjDjPvzDPPM+8MB+7PVG9ekiXJ25qzXMVZtqu2fP0D7xDrZ7aY/djZAqiEy3qRKY4se8ULYizqENm+vhO2ADf+Z3zhCdlmyqjiDieG2FTBEMeC3wQUA7LxTIVHAlVNfwsVV5gwRgOWRE64QwkFXGAD28hCQYb65wVT4kqTa+nGAzQkMKOM81P8knJJIA2LjblaSONk/ZOICyhjD7P8T886L0ImNoUGHtI5SX8jTYU6olg2Aav8ATHEkaZ8j87taEu1rcY1QUrYVNb4FZLIkNw5+hqeWodmDikKORorhzwOsU9RCqcUDQjWHo4CEeOeyioqNEuemHJI0mvY6P/95q4/gVdEEGoKhkzqPmO4GSH9abj91h6C4RG9j405Qkwlhl7W6fAwl94WbjnWiHPQPmkL1pOIoaveaeu2u5z/rvlrPq9Hapfc/879DQmIXQjyme6GAAAAAElFTkSuQmCC";
 const UNLOCKED_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAJpSURBVDjLdZLLaxNRFIe/O2kTqxmNxAopUjXWB7pwrUIXggs3oispCoqCFWG0G6H9D6Su3IjrQEAExYULF+LKlagUNL5qs4i0jRhokj6mM/dxXIyPIdgDh3s43Pvx+517lIiQjmq1etJaeyuKomPAFmPMC2PMvSAIXvKfUGlApVK57vv+/aGhIeV5HgArKyvMzc1Jq9W6MTk5+aAX0Jd6fCifz0+XSiXVaDRoNpsA+L5PqVRSYRhOl8vln/V6/XEa4P0put3uq2Kx6M/Pz9NsNi8GQaCCIFCLi4uXZmdnKRQK+bGxsTu9CrxUnTPGsLCwsBQEQfVPc2pqqgK0Op2OGhwczG9oAchYaxER23tpYmJikA1CiQiNV1fk2cxRjFNYazlz5A0Z0Yg1iElSa/vUddtPgfMKOe2J4eC1dypRIML45WMoPFRmAMVpcAr6NgECVvOxevEscBZg5Nwdvj28+c+CWAMIpvWIvtwOlMqD64eBAoiDtQ4jJ0aJw3mcWQPnkDhKAYwBJ2Bj2rW3eN4WCoeP8/35XcTtZHj0FO3PNeJwCX/PdkQsouM0QIMIYjWFgwfwsjtAOWxked8aYJiYwr69rK/mELMG4v4CPADRGhELVrP0YYZ27TV4BrfuiMIIJKb95RPtr43ErnOI1ikFWidUG1PYv4fM5iJ4MeUL45S1ge4Ptu0bItvtTxQ46QXE4BzOxLRrNTKbfdiUh74sOAPdNuHST/TqMv7wVgSX2E4DRCy5XVcZ2J1BZXPJF3r94CzEIX64jNUR4mwyL2NSgDii/uR2MgtjEKN/p/l7Ym2yWNYmtUsW9hfAtnFXLnJPWAAAAABJRU5ErkJggg==";
@@ -119,28 +122,29 @@ let page = {
   title         : document.title,
   responseUrl   : String($(".message").find("a[href^='/mess']") // Modèle pour générer les réponses manquantes des messages ajoutés
                                       .attr("href")),
-  topic                 : $(".fondForum2Title").find("h3").text(),      // Titre du sujet
-  unread                : 0,                                            // Nombre de messages non lus
-  quoted                : false,                                        // Un message non-lu cite le pseudo
-  queue                 : [],                                           // File d'attente des messages restant à ajouter à la page
-  lastMessage           : $(".messagetable").last(),                    // Dernier message actuellement présent sur la page
-  fetched               : $(document),                                  // Dernière version de la page
-  fetchedTable          : $(".messagetable"),                           // Liste des messages de la dernière version de la page
-  url                   : document.URL,                                 // URL de la page actuelle
-  urlAnchor             : document.URL.match(/#(t\d+)$/),               // message pointé par l'URL
-  index                 : $(".cBackHeader").find("b").last().text(),    // Numéro de la page actuelle
-  mergeCounter          : 0,                                            // Nombre de pages ajoutés
-  isLive                : false,                                        // Le script est en cours d'execution
-  isFetching            : false,                                        // La page est en train d'être récupérée pour traitement
-  isUpdating            : false,                                        // Des messages sont en train d'être ajoutés à la page
-  isNotifying           : false,                                        // Une notification a été envoyé il y a peu de temps
-  isScrolling           : false,                                        // Un ordre de défilement a déjà été envoyé à la page
-  isMerging             : false,                                        // La page suivante est en train d'être intégrée
-  isLocked              : !document.hop,                                // Le sujet est verrouillé
-  autoScroll            : true,                                         // La page défile automatiquement
-  resumeScrollRequested : false,                                        // Le défilement automatique rependra au prochain message
-  notifications         : [],                                           // File d'attente des notifications
-  get next() {                                                  // Page suivante
+  topic                 : $(".fondForum2Title").find("h3").text(),           // Titre du sujet
+  unread                : 0,                                                 // Nombre de messages non lus
+  quoted                : false,                                             // Un message non-lu cite le pseudo
+  queue                 : [],                                                // File d'attente des messages restant à ajouter à la page
+  lastMessage           : $(".messagetable").last(),                         // Dernier message actuellement présent sur la page
+  fetched               : $(document),                                       // Dernière version de la page
+  fetchedTable          : $(".messagetable"),                                // Liste des messages de la dernière version de la page
+  url                   : document.URL,                                      // URL de la page actuelle
+  messageAnchor         : parseInt(document.URL.replace(/.+#t(\d+)$/,"$1")), // message pointé par l'URL
+  index                 : $(".cBackHeader").find("b").last().text(),         // Numéro de la page actuelle
+  storedData            : {},                                                // Données relatives au topic utilisées lors du chargement du script
+  mergeCounter          : 0,                                                 // Nombre de pages ajoutés
+  isLive                : false,                                             // Le script est en cours d'execution
+  isFetching            : false,                                             // La page est en train d'être récupérée pour traitement
+  isUpdating            : false,                                             // Des messages sont en train d'être ajoutés à la page
+  isNotifying           : false,                                             // Une notification a été envoyé il y a peu de temps
+  isScrolling           : false,                                             // Un ordre de défilement a déjà été envoyé à la page
+  isMerging             : false,                                             // La page suivante est en train d'être intégrée
+  isLocked              : !document.hop,                                     // Le sujet est verrouillé
+  autoScroll            : true,                                              // La page défile automatiquement
+  resumeScrollRequested : false,                                             // Le défilement automatique rependra au prochain message
+  notifications         : [],                                                // File d'attente des notifications
+  get next() { // Page suivante
     return $(page.fetched).find(".pagepresuiv:first a");
   },
   get isLast() { // La page actuelle est la dernière du topic
@@ -149,7 +153,7 @@ let page = {
 
   /* Passer à la page suivante */
   goNext() {
-    console.log("page change...");
+    //console.log("page change...");
     setTimeout(() => window.location.href = $(page.fetched).find(".pagepresuiv:first a").attr("href"), config.changePageDelay);
   },
 
@@ -196,7 +200,8 @@ let page = {
   /* Intégrer la page suivante à la page en cours */
   addNextPage(data) {
     ++page.mergeCounter;
-    GM.setValue(`${page.cat}&${page.post}`, parseInt(page.index) + page.mergeCounter);
+    page.storedData.pageIndex = parseInt(page.index) + page.mergeCounter;
+    page.saveData();
     history.pushState(null, null, page.url);
     let messageIndex = 1;
     page.fetched = $.parseHTML(data);
@@ -260,7 +265,7 @@ let page = {
       // Le message n'est pas un indicateur de nouvelle page
         repairLink(message);
         $(message).hide().fadeIn(config.fadeInTime);
-        clearHighlight();
+        if (page.autoScroll) clearHighlight();
         if (!page.autoScroll) setNew(message);
         if (config.quotedIndicator) page.quoted = page.quoted || hasPseudo(message);
         if (config.unreadIndicator || config.quotedIndicator) page.updateTitle();
@@ -340,6 +345,8 @@ let page = {
   /* Arrêt définitif du défilement automatique */
   stopAutoScroll() {
     page.autoScroll = false;
+    page.storedData.autoScroll = false;
+    page.saveData();
     $("html, body").stop();
     $("html, body").off(USER_ACTION);
     if (config.scroll.autoResume) page.startBottomObserver();
@@ -349,6 +356,8 @@ let page = {
   /* Reprise du défilement automatique */
   resumeAutoScroll() {
     page.autoScroll = true;
+    page.storedData.autoScroll = true;
+    page.saveData();
     page.resumeScrollRequested = false;
     if (config.scroll.autoResume) page.endBottomObserver();
     lock.lock();
@@ -437,6 +446,33 @@ let page = {
       page.isNotifying = false;
     }
   },
+  
+  /* Sauvegarder les informations de la page utiles lors du lancement du script*/
+  saveData() {
+    GM.setValue(`${page.cat}&${page.post}`, JSON.stringify(page.storedData));
+  },
+  
+  /* Marquer les messages nons lus lors du premier chargement de la page */
+  highlightUnreadMessage() {
+    let lastID  = parseInt(listenumreponse[listenumreponse.length - 1]);
+    if (page.storedData.messageIndex < lastID) {
+      // des messages non-lus sont présents sur la page
+      let firstID = parseInt(listenumreponse[0]);
+      
+      if (config.unreadHighlight) {
+        if (page.storedData.messageIndex < firstID ) {
+          // tous les messages sont nouveaux
+          $(".messagetable").addClass("hfr-live-highlight");
+        } else {
+          // le dernier message lu est (ou était) dans la page (sauf en dernière position)
+          $(`a[name="t${page.storedData.messageIndex}"]`).closest(".messagetable").nextAll(".messagetable").addClass("hfr-live-highlight");
+        }
+      }
+
+      page.storedData.messageIndex = lastID;
+      page.saveData();
+    };
+  }
 }
 
 page.post = page.responseUrl.replace(/.*&post=(\d+).*/g, "$1");
@@ -455,7 +491,7 @@ function getURL(message) {
 
 /* Renvoyer l'ID d'un message */
 function getID(message) {
-  return $(message).find("a[name^='t']").attr("name").substring(1);
+  return parseInt($(message).find("a[name^='t']").attr("name").substring(1));
 }
 
 /* Vérifie si un message contient une citation du pseudo */
@@ -517,7 +553,9 @@ function toggleScript() {
   if (page.isLive) {
     page.fetch();
     page.fetchTimer = setInterval(page.fetch, config.fetchInterval);
-    GM.setValue(`${page.cat}&${page.post}`, parseInt(page.index) + page.mergeCounter);
+    page.storedData.scriptOn  = true;
+    page.storedData.pageIndex = parseInt(page.index) + page.mergeCounter;
+    page.saveData();
     $(".hfr-live-button").each((i,el) => {
       el.setAttribute("on",true);
       el.title = "Désactiver [HFR] Live";
@@ -526,7 +564,9 @@ function toggleScript() {
     if (config.favicon) page.changeFavicon(FAVICON_LIVE);
   } else {
     clearInterval(page.fetchTimer);
-    GM.deleteValue(`${page.cat}&${page.post}`);
+    page.storedData.scriptOn  = false;
+    page.storedData.pageIndex = -1;
+    page.saveData();
     $(".hfr-live-button").each((i,el) => {
       el.setAttribute("on",false);
       el.title = "Activer [HFR] Live";
@@ -702,18 +742,15 @@ GM.addStyle(`
   }
 `);
 lock.id = "hfr-live-lock";
-lock.locked = true;
 lock.lock = () => {
   lock.src = LOCKED_ICON;
   lock.setAttribute("locked",true);
-  lock.locked = true;
   lock.setAttribute("observer",false);
   lock.title = "Désactiver le défilement automatique";
 }
 lock.unlock = () => {
   lock.src = UNLOCKED_ICON;
   lock.setAttribute("locked",false);
-  lock.locked = false;
   lock.title = "Activer le défilement automatique";
 }
 lock.fade = () => {
@@ -725,20 +762,12 @@ lock.unfade = () => {
   lock.setAttribute("observer",false);
 }
 lock.onclick = () => {
-  console.log(lock.locked);
-  //if (lock.getAttribute("locked") == "true") {
-  if (lock.locked) {
-    console.log("unlocking");
+  if (lock.getAttribute("locked") == "true") {
     page.stopAutoScroll();
-    console.log("unlocked");
   } else {
-    console.log("locking");
     page.resumeAutoScroll();
-    console.log("locked");
   }
 };
-lock.lock();
-console.log(lock.locked);
 
 /* Gère la reprise du défilement automatique en fonction de la position de la page */
 function resumeScrollObserver() {
@@ -800,6 +829,9 @@ GM.addStyle(`
   #hfr-live-new-panel[colorblind="false"]>div {
     background-color : #4bc730;
   }
+  .hfr-live-highlight {
+    box-shadow : -3px 0px 1px -1px #4bc730;
+  }
 `);
 newMessagePanel.id ="hfr-live-new-panel";
 newMessagePanel.setAttribute("colorblind",config.colorBlind);
@@ -844,15 +876,8 @@ function setNew(message) {
     $(message).addClass("hfr-live-new");
     newMessagePanel.increase();
   }
-  $(message).addClass("hfr-live-HL");
+  $(message).addClass("hfr-live-highlight");
 }
-
-GM.addStyle(`
-  .hfr-live-HL .messCase1 {
-    border-left         : 2px solid !important;
-    border-left-color   : #4bc730 !important;
-  }
-`);
 
 /* Retire l'attribut nouveau des messages déjà visionnés et retire la bordure des messages hors écran */
 function clearNewMessages() {
@@ -863,32 +888,38 @@ function clearNewMessages() {
       newMessagePanel.decrease();
     }
   });
-  $(".hfr-live-HL").each(function(index) {
-    if ($(this).offset().top + $(this).get(0).offsetHeight <= document.documentElement.scrollTop) {
-      //Si le bas d'un message marqué est situé plus haut que le haut de l'écran, le message n'est plus marqué
-      $(this).removeClass("hfr-live-HL");
-    }
-  });
 }
 
 /* Retire l'attribut marqué (bordure colorée) aux messages déjà visionnés */
 function clearHighlight() {
-  $(".hfr-live-HL").each(function(index) {
-    if ($(this).offset().top + $(this).get(0).offsetHeight <= document.documentElement.scrollTop + $(window).height()) {
-      //Si le bas d'un message marqué est plus situé haut que le bas de l'écran, le message n'est plus marqué
-      $(this).removeClass("hfr-live-HL");
-    }
-  });
+  $(".hfr-live-highlight").removeClass("hfr-live-highlight");
 }
 
 /* Vérification de l'état du script au chargement de la page */
 (async () => {
-  let savedPage = await GM.getValue(`${page.cat}&${page.post}`);
+  const DEFAULT_PAGE_DATA = {
+    version       : VERSION,
+    scriptOn      : false,
+    autoScroll    : false,
+    notifications : false,
+    pageIndex     : -1,
+    messageIndex  : 0,
+  };
+  const DEFAULT_PAGE_DATA_STRING = JSON.stringify(DEFAULT_PAGE_DATA);
+  const PAGE_DATA = await GM.getValue(`${page.cat}&${page.post}`, DEFAULT_PAGE_DATA_STRING);
+  page.storedData = JSON.parse(PAGE_DATA);
+  if (!page.storedData.version) page.storedData = JSON.parse(DEFAULT_PAGE_DATA_STRING);
+  page.autoScroll = page.storedData.autoScroll;
+  if (page.autoScroll) {
+    page.resumeAutoScroll();
+  } else {
+    page.stopAutoScroll();
+  }
 
-  if (savedPage == parseInt(page.index)-1) {
+  if (page.storedData.scriptOn && page.storedData.pageIndex == parseInt(page.index)-1) {
     // Si le script était actif dans la page précédente, l'activer pour cette page
-    ++savedPage;
-    GM.setValue(`${page.cat}&${page.post}`, savedPage);
+    ++page.storedData.pageIndex;
+    page.saveData();
 
     if (page.isLast) {
       while ($(".messagetable").get(1)) {
@@ -906,12 +937,22 @@ function clearHighlight() {
         }
     }
   }
-
-  if (savedPage == parseInt(page.index) && !(page.urlAnchor && (!page.isLast || $(`a[name="${page.urlAnchor[1]}"]`).closest(".messagetable").next(".messagetable").get(0)))) {
+  
+  if (page.storedData.scriptOn && 
+      page.storedData.pageIndex == parseInt(page.index) && 
+      !(page.messageAnchor && (!page.isLast || $(`a[name="t${page.messageAnchor}"]`).closest(".messagetable").next(".messagetable").get(0)))) {
     // Si le script a déja été activé pour cette page et qu'il n'y a pas de nouveau message depuis la dernière visite, lancer le script en activant le bouton
+    page.storedData.messageIndex = parseInt(listenumreponse[listenumreponse.length - 1]);
+    page.saveData();
     toggleScript();
   } else {
-    GM.deleteValue(`${page.cat}&${page.post}`);
+    if (page.messageAnchor && page.messageAnchor > page.storedData.messageIndex) {
+      page.storedData.messageIndex = page.messageAnchor;
+      page.saveData();
+    }
+    page.highlightUnreadMessage();
+    page.storedData.pageIndex = -1;
+    page.saveData();
   }
 })();
 
