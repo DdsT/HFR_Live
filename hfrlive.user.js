@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.7
+// @version        0.1.8
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -40,10 +40,6 @@ along with this program.  If not, see https://ddst.github.io/hfr_ColorTag/LICENS
 */
 
 /************** TODO *****************
- * Rendre le défilement plus intuitif
- * Indicateur de nouveau message en bas de la page
- * Résoudre le problème d'affichage multiple
- * Mettre la bonne page lors d'une réponse rapide
  * Gérer les cas de suppression de message
  * Indicateur de nouveau message privé
  * Fenêtre de configuration
@@ -114,6 +110,7 @@ const USER_ACTION  = "scroll DOMMouseScroll mousewheel keyup";
 const COG_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAQAAAC1+jfqAAABkklEQVQoz1VRTUsCYRBe/AHe/Qn+j710EbKLVJcyiAqLLkWJkdkSUdChOpQRRWVRG6RQUqirtq7pupZRUvRxyOIlIU9ed5+mbSFjDjPvzDPPM+8MB+7PVG9ekiXJ25qzXMVZtqu2fP0D7xDrZ7aY/djZAqiEy3qRKY4se8ULYizqENm+vhO2ADf+Z3zhCdlmyqjiDieG2FTBEMeC3wQUA7LxTIVHAlVNfwsVV5gwRgOWRE64QwkFXGAD28hCQYb65wVT4kqTa+nGAzQkMKOM81P8knJJIA2LjblaSONk/ZOICyhjD7P8T886L0ImNoUGHtI5SX8jTYU6olg2Aav8ATHEkaZ8j87taEu1rcY1QUrYVNb4FZLIkNw5+hqeWodmDikKORorhzwOsU9RCqcUDQjWHo4CEeOeyioqNEuemHJI0mvY6P/95q4/gVdEEGoKhkzqPmO4GSH9abj91h6C4RG9j405Qkwlhl7W6fAwl94WbjnWiHPQPmkL1pOIoaveaeu2u5z/rvlrPq9Hapfc/879DQmIXQjyme6GAAAAAElFTkSuQmCC";
 const UNLOCKED_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAJpSURBVDjLdZLLaxNRFIe/O2kTqxmNxAopUjXWB7pwrUIXggs3oispCoqCFWG0G6H9D6Su3IjrQEAExYULF+LKlagUNL5qs4i0jRhokj6mM/dxXIyPIdgDh3s43Pvx+517lIiQjmq1etJaeyuKomPAFmPMC2PMvSAIXvKfUGlApVK57vv+/aGhIeV5HgArKyvMzc1Jq9W6MTk5+aAX0Jd6fCifz0+XSiXVaDRoNpsA+L5PqVRSYRhOl8vln/V6/XEa4P0put3uq2Kx6M/Pz9NsNi8GQaCCIFCLi4uXZmdnKRQK+bGxsTu9CrxUnTPGsLCwsBQEQfVPc2pqqgK0Op2OGhwczG9oAchYaxER23tpYmJikA1CiQiNV1fk2cxRjFNYazlz5A0Z0Yg1iElSa/vUddtPgfMKOe2J4eC1dypRIML45WMoPFRmAMVpcAr6NgECVvOxevEscBZg5Nwdvj28+c+CWAMIpvWIvtwOlMqD64eBAoiDtQ4jJ0aJw3mcWQPnkDhKAYwBJ2Bj2rW3eN4WCoeP8/35XcTtZHj0FO3PNeJwCX/PdkQsouM0QIMIYjWFgwfwsjtAOWxked8aYJiYwr69rK/mELMG4v4CPADRGhELVrP0YYZ27TV4BrfuiMIIJKb95RPtr43ErnOI1ikFWidUG1PYv4fM5iJ4MeUL45S1ge4Ptu0bItvtTxQ46QXE4BzOxLRrNTKbfdiUh74sOAPdNuHST/TqMv7wVgSX2E4DRCy5XVcZ2J1BZXPJF3r94CzEIX64jNUR4mwyL2NSgDii/uR2MgtjEKN/p/l7Ym2yWNYmtUsW9hfAtnFXLnJPWAAAAABJRU5ErkJggg==";
 const LOCKED_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAJ/SURBVDjLbVJBaxNBGH2bpEkTmxi1NTRKTZtoQUHEWz0Igj2I4kG9eVNQhEBO7bEHc+yv8JAiHnr2B4gFqVrQRhObljQolBSTJqZJdnZmfbNr2rU68DEz33zfm/fejGHbNrxjaWlpRCk1J6WcYZxkgPGTsWJZ1mIul/vlrTe8AIVC4Qqbl5PJ5GQsFoPP5wP36PV6qNfr2OIg0L35+fm1fwDYPMLDj+l0OmOaJmq1Gjqdjr4dgUAAiUTCqSsWixvMXV5YWOjqvW+AxOSz8fHxjBAC5XJ5s91up7gO6tDrUqn0QwOTXYZSsoO+wGDB5EwkEkGlUgGb7mSz2apHajWfz9+sVqvFVCrl1P4PYExr5m16vYUjQ+c0O11DtmN/ebD95pG9UpnGzl7Y0Xz30ir8toAtLdiWG0JIvFi76piaGG7g9plVTD/5YLgMCPLg/g0YtMTwhznfApRBfsP6kAYJSKuN57Md5oXTsvHy7aEEfZMutHZfIRAahWGMsHAICMeZVsD+HmTrG8zudyhrH+HJLGyz7wEgRSh9k4nm+nvqPIb4xWuovV5k/2lMXJ9F8+s6ARqIpk6QsIQtTC+AcGTYpBqfvgBfcJTuKMi+xKfdMCZgIp6eRK8TYu2+w2oA4PwDm+5qVK218XmNLN7xxILqKfS7pGqTWekLmuVtV65STs8hA73RqJQQP5+CP3KKACamHj7FlGBDawfH00kEW0MuA8o9AmA6qMrSHqwTIAoM08hAkHkN0ES3UYfotBGdiNFu5cr2AmgJobOPET7nhxEMuU/o40soSjO7iHbbVNgnUen6pY0/AOCTbC7PuV44H0f8Cetg5g9zP5aU7loDcfwGcrKyzYdvwUUAAAAASUVORK5CYII=";
+const BELL_ICON = "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAABAAAAAQCAYAAAAf8/9hAAAABGdBTUEAAK/INwWK6QAAABl0RVh0U29mdHdhcmUAQWRvYmUgSW1hZ2VSZWFkeXHJZTwAAAKnSURBVDjLlZJbSNNhGMaFroKCbgqCHW37W24tT6mFRZq1sougqIzwQoKoCyMxSMWyZkV4KkemCUtJcSibkznn1A3pNGYTNY+bOptb2g42TzS1kU/fAodRZl088H3wPr/vfd/vCQIQ9D8aaaJUg3Kuz1AarPDfNzYoqe0mJRVKjNtMSm6eVRUBd3MiWvLYvg0BlhbqOTHahhXUHHn1u029H/rH7BV9ER/yHFbTugBi5I6qqUVnTxqWXFosO1sx25UOV1M8BsrDoMxl5a7W/sl81tpxAO6hfHxzqTHXfR6eNwlwKnhwNMbAoTkKtYhl+g1AjDuJ2qeMyViw1mHJ/hJzxiTMvI3HtO4g3JpIuFQCuLQn0VXM8QUAoyqKS4xTZNYVd/8d+GaN+Gq5D7deCKfuMCabYzBWuxd2GR/ORtJF6wl0PAheDgCG5Vytu+8clh0SeCcy4TWlYrH/DFyv4jFaH46hSh4+lFGwSkN+jjGlPo7GbJYtAOir4kzOW65h3iLC+xo+eutDMVgXjTEipyYaxhIOup/sgr2WA3fbMUzI4lB3kykLADqfBleMqOLgMedgoOE0VPdioRMfgbaAjY8yATytYegTs2GRMOFoSUTPMx5qrjOEvyzxdTFb3yONIF1kQ3FLAK+1EF96M6HJ56OziIGZZooAWGQfJEC32Z61vxY4tD1kmw1V4TC8uIBxXQa84yKMqC6iJGUrdHd3YEHJha3hEKQ3mIN/BPhFAtKgK96HtsJYKDJ50JcloPTSFjxK2oxuMQ0WaRSqrtIn1gX4Jc9mCeVZTOhJ4uyGU/j8TgiDZA8+qXejt0yAisv0zr8CViXNYIqk6QzoCngwV0fBXBmJpqwQlKbQRP8E8Ks6jbFJcoWeU55Kd4pTaNMlybR2cTKNtbbmB+pfvh6cSOd2AAAAAElFTkSuQmCC";
 /* Icons by Mark James - http://www.famfamfam.com/lab/icons/silk/ - CC BY 2.5 - https://creativecommons.org/licenses/by/2.5/ */
 
 const PSEUDO = $("input[name='pseudo']").attr("value");
@@ -141,6 +138,7 @@ let page = {
   isScrolling           : false,                                             // Un ordre de défilement a déjà été envoyé à la page
   isMerging             : false,                                             // La page suivante est en train d'être intégrée
   isLocked              : !document.hop,                                     // Le sujet est verrouillé
+  isFull                : false,
   autoScroll            : true,                                              // La page défile automatiquement
   resumeScrollRequested : false,                                             // Le défilement automatique rependra au prochain message
   notifications         : [],                                                // File d'attente des notifications
@@ -159,7 +157,6 @@ let page = {
 
   /* Demander la dernière version de la page et rajouter les nouveaux messages dans la pile */
   fetch() {
-    clearNewMessages();
     if (!page.isFetching) {
       page.isFetching = true;
       $.get(page.url, {complete: page.endFetch}, page.succeedFetch);
@@ -202,7 +199,12 @@ let page = {
     ++page.mergeCounter;
     page.storedData.pageIndex = parseInt(page.index) + page.mergeCounter;
     page.saveData();
+    
+    // mise à jour du numéro de page dans les url de réponse et dans l'historique
+    $(document.hop).find("input[name='page']").attr("value", page.storedData.pageIndex + "");
+    $("#repondre_form").parent().html($("#repondre_form").parent().html().replace(/(&amp;page=)\d+/g,"$1" + page.storedData.pageIndex));
     history.pushState(null, null, page.url);
+    
     let messageIndex = 1;
     page.fetched = $.parseHTML(data);
     page.checkLock(false);
@@ -259,24 +261,30 @@ let page = {
   processQueue() {
     let message = page.queue.shift();
     if (message) {
+      //un message est présent dans la file d'attente
       page.lastMessage.after(message);
       //console.log("- " + debug(message));
       if (!message.classList.contains("hfr-live-alert")) {
-      // Le message n'est pas un indicateur de nouvelle page
+        // Le message n'est pas une alerte venant du script
+        let messageID = getID(message);
         repairLink(message);
         $(message).hide().fadeIn(config.fadeInTime);
-        if (page.autoScroll) clearHighlight();
-        if (!page.autoScroll) setNew(message);
+        if (page.autoScroll && document.hasFocus()) clearHighlight();
+        if (page.storedData.messageIndex < messageID) {
+          setNew(message);
+          page.storedData.messageIndex = messageID;
+          page.saveData();
+        }
         if (config.quotedIndicator) page.quoted = page.quoted || hasPseudo(message);
         if (config.unreadIndicator || config.quotedIndicator) page.updateTitle();
-        if(config.notification.enabled
+        if(page.storedData.notifications
            && ("Notification" in window)
            && (!document.hasFocus() || config.notification.onfocus)) {
           page.notifications.push(message);
           page.notify();
         }
       }
-      page.lastMessage = $(".messagetable").last();
+      page.lastMessage = $(".messagetable").last();      
       page.requestScroll();
       if (document.hasFocus() && page.isLast) {
         setTimeout(page.processQueue, config.messageInterval);
@@ -285,16 +293,24 @@ let page = {
         page.processQueue();
       }
     } else {
+      // pas de message dans la file d'attente
       page.isUpdating = false;
       if (!page.isLast) {
         if (page.mergeCounter + 1 < config.pageAmount) {
-        // La page suivante va être intégrée à la page actuelle
+          // La page suivante va être intégrée à la page actuelle
+          page.isFull = false;
           page.url = page.next.attr("href");
           page.isMerging = true;
           //console.log("page merge...");
           page.requestScroll();
         } else {
-          if (config.changePage) page.goNext();
+          // plus de place sur la page actuelle, passage à la page suivante
+          if (page.autoScroll) {
+            if (config.changePage) page.goNext();
+          } else {
+            if (!page.isFull) page.addAlert(`<a href="${$(page.fetched).find(".pagepresuiv:first a").attr("href")}">Passer à la page suivante pour voir les nouveaux messages.</a>`);
+          }
+          page.isFull = true;
         }
       }
     }
@@ -338,7 +354,6 @@ let page = {
 
   endScroll() {
     $("html, body").off(USER_ACTION);
-    clearNewMessages();
     page.isScrolling = false;
   },
 
@@ -349,7 +364,7 @@ let page = {
     page.saveData();
     $("html, body").stop();
     $("html, body").off(USER_ACTION);
-    if (config.scroll.autoResume) page.startBottomObserver();
+    if (page.isLive && config.scroll.autoResume) page.startBottomObserver();
     lock.unlock();
   },
 
@@ -449,7 +464,7 @@ let page = {
   
   /* Sauvegarder les informations de la page utiles lors du lancement du script*/
   saveData() {
-    GM.setValue(`${page.cat}&${page.post}`, JSON.stringify(page.storedData));
+    GM.setValue(page.topicIndex, JSON.stringify(page.storedData));
   },
   
   /* Marquer les messages nons lus lors du premier chargement de la page */
@@ -475,8 +490,9 @@ let page = {
   }
 }
 
-page.post = page.responseUrl.replace(/.*&post=(\d+).*/g, "$1");
-page.cat  = page.responseUrl.replace(/.*&cat=(\d+).*/g,  "$1");
+page.post       = page.responseUrl.replace(/.*&post=(\d+).*/g, "$1");
+page.cat        = page.responseUrl.replace(/.*&cat=(\d+).*/g,  "$1");
+page.topicIndex = `${page.cat}&${page.post}`;
 
 /* Réparer le lien de citation d'un message ajouté */
 function repairLink(message) {
@@ -504,24 +520,29 @@ function formatBody(message) {
   //Suppressions des élements autres que le texte du message :
   let content = $(message).find("div[id^='para']").get(0).cloneNode(true);
   //formatage des citations :
-  $(content).find(".citation p, .citation br, .citation ul, .oldcitation p, .oldcitation br, .oldcitation ul, .quote p, .quote br, .quote ul, .edited, .signature").remove();
+  $(content).find(".citation p, .citation ul, .citation .container, .oldcitation p, .oldcitation ul, .oldcitation .container, .quote p, .quote ul, br, .edited, .signature").remove();
   $(content).find("b.s1").each((i,el) => {
     el.innerHTML = el.innerHTML.replace(/ a écrit :/g,"");
-    el.innerHTML = `@${el.innerHTML} : `;
-    el.innerHTML = el.innerHTML.replace(/@Citation : : /g, config.notification.quote + "\n");
+    el.innerHTML = `@@@HL@@@${el.innerHTML}@@@LH@@@`;
+    el.innerHTML = el.innerHTML.replace(/@@@HL@@@Citation :@@@LH@@@/g, config.notification.quote + "\n");
   });
   //Remplacement des images, des liens et des smileys par un substitut ou par leur alt respectivement :
   $(content).find("a.cLink img").each((i,el) => el.parentNode.outerHTML = config.notification.image + config.notification.link + el.parentNode.hostname);
   $(content).find("img").each((i,el) => el.outerHTML = el.alt.replace(/.+\/\/.*/g, config.notification.image));
-  $(content).find("a.cLink").each((i,el) => el.outerHTML = config.notification.link + el.hostname);
+  $(content).find("a.cLink").each((i,el) => el.outerHTML = config.notification.link + el.hostname + " ");
   //Formatage des sauts de lignes :
   content.innerHTML = content.innerHTML
+                        .replace(/ ([\,,\.,\n, ])/g,"$1")
                         .replace(/&nbsp;/g,"")
-                        .replace(/<br>/g,"\n")
                         .replace(/(\n)+/g,"\n")
                         .replace(/<p>(\n)+/g,"<p>")
-                        .replace(/<p><\/p>/g,"<p>\n</p>");
-  return content.textContent;
+                        .replace(/<p><\/p>/g,"");
+  let text = content.textContent;
+  // regroupement des citations
+  text = text.replace(/@@@LH@@@@@@HL@@@/g,", ")
+             .replace(/@@@LH@@@/g," : ")
+             .replace(/@@@HL@@@/g,"@");
+  return text;
 }
 
 /* Afficher une notification */
@@ -541,7 +562,6 @@ function displayNotification(title, option, message) {
   }
 }
 
-
 /* Fonction de débogage */
 function debug(message) {
   return $(message).find("a").attr("name") + " " + $(message).find("b.s2").text();
@@ -551,6 +571,7 @@ function debug(message) {
 function toggleScript() {
   page.isLive = !page.isLive;
   if (page.isLive) {
+    // lancer le script
     page.fetch();
     page.fetchTimer = setInterval(page.fetch, config.fetchInterval);
     page.storedData.scriptOn  = true;
@@ -562,7 +583,12 @@ function toggleScript() {
     });
     if (config.control) control.show();
     if (config.favicon) page.changeFavicon(FAVICON_LIVE);
+    if (!page.autoScroll && config.scroll.autoResume) {
+      page.startBottomObserver();
+      resumeScrollObserver();
+    }
   } else {
+    // arrêter le script
     clearInterval(page.fetchTimer);
     page.storedData.scriptOn  = false;
     page.storedData.pageIndex = -1;
@@ -572,6 +598,10 @@ function toggleScript() {
       el.title = "Activer [HFR] Live";
     });
     control.hide();
+    if (!page.autoScroll) {
+      page.endBottomObserver();
+      lock.unfade();
+    }
     if (config.favicon) page.changeFavicon(FAVICON);
   }
 }
@@ -649,7 +679,10 @@ function newLedButton() {
   led.setAttribute("on",page.isLive);
   led.setAttribute("colorblind",config.colorBlind);
   led.title = `${(page.isLive)?"Désactiver":"Activer"} [HFR] Live`;
-  led.onclick = toggleScript;
+  led.onclick = () => {
+    if (led.getAttribute("on") == "false") clearHighlight();
+    toggleScript();
+  };
   return led;
 }
 
@@ -661,7 +694,10 @@ function newLegacyButton() {
   button.setAttribute("on",page.isLive);
   button.setAttribute("colorblind",config.colorBlind);
   button.title = `${(page.isLive)?"Désactiver":"Activer"} [HFR] Live`;
-  button.onclick = toggleScript;
+  button.onclick = () => {
+    if (button.getAttribute("on") == "false") clearHighlight();
+    toggleScript();
+  };
   return button;
 }
 
@@ -734,9 +770,6 @@ GM.addStyle(`
     cursor     : pointer;
     transition : opacity 0.3s ease;
   }
-  #hfr-live-lock[observer="false"] {
-    opacity : 1;
-  }
   #hfr-live-lock[observer="true"] {
     opacity : 0.5;
   }
@@ -782,6 +815,42 @@ function resumeScrollObserver() {
    }
 }
 
+GM.addStyle(`
+  #hfr-live-bell {
+    cursor     : pointer;
+    transition : opacity 0.3s ease;
+  }
+  #hfr-live-bell[on="false"] {
+    opacity : 0.5;
+  }
+`);
+
+let bell = document.createElement("img");
+bell.id = "hfr-live-bell";
+bell.src = BELL_ICON;
+bell.onclick = toggleNotifications;
+bell.turnOn  = () => {
+  bell.setAttribute("on",true);
+  bell.title = "Désactiver les notifications";
+};
+bell.turnOff = () => {
+  bell.setAttribute("on",false);
+  bell.title = "Activer les notifications";
+};
+
+function toggleNotifications () {
+  if (bell.getAttribute("on") == "true") {
+    bell.turnOff();
+    page.storedData.notifications = false;
+  } else {
+    bell.turnOn();
+    page.storedData.notifications = true;
+  }
+  page.saveData();
+};
+
+
+
 let configImage = document.createElement("img");
 configImage.src = COG_ICON;
 configImage.style.cursor = "pointer";
@@ -789,10 +858,12 @@ configImage.title = "Configurer [HFR] Live";
 configImage.onclick = config.open;
 
 control.appendChild(configImage);
+control.appendChild(bell);
 control.appendChild(lock);
 control.appendChild(newButton());
 document.body.appendChild(control);
 lock.lock();
+
 
 /* Création du panneau d'indication de nouveaux messages */
 let newMessagePanel = document.createElement("div");
@@ -808,7 +879,7 @@ GM.addStyle(`
 
   #hfr-live-new-panel>div {
     margin        : 0 auto;
-    width         : 175px;
+    width         : 190px;
     padding       : 3px;
     border        : 1px solid rgb(0,0,0,0.2);
     border-radius : 4px;
@@ -854,10 +925,12 @@ newMessagePanel.update = () => {
 
 newMessagePanel.increase = () =>  {
   ++newMessagePanel.newAmount;
+  if (newMessagePanel.newAmount == 1) $(window).scroll(newMessageObserver);
   newMessagePanel.update();
 }
 newMessagePanel.decrease = () =>  {
   --newMessagePanel.newAmount;
+  if (newMessagePanel.newAmount == 0) $(window).off("scroll",newMessageObserver);
   newMessagePanel.update();
 }
 
@@ -879,12 +952,14 @@ function setNew(message) {
   $(message).addClass("hfr-live-highlight");
 }
 
-/* Retire l'attribut nouveau des messages déjà visionnés et retire la bordure des messages hors écran */
-function clearNewMessages() {
-  $(".hfr-live-new").each(function(index) {
-    if ($(this).offset().top + $(this).get(0).offsetHeight <= document.documentElement.scrollTop + $(window).height()) {
-      //Si le bas d'un nouveau message est situé plus haut que le bas de l'écran, le message n'est plus nouveau
-      $(this).removeClass("hfr-live-new");
+/* Retire l'attribut nouveau des messages déjà visionnés */
+function newMessageObserver() {
+  $(".hfr-live-new").each((i,el) => {
+    if ($(el).offset().top + $(el).get(0).offsetHeight <= document.documentElement.scrollTop + $(window).height() ||
+       $(el).offset().top <= document.documentElement.scrollTop) {
+      // si le bas d'un nouveau message est situé plus haut que le bas de l'écran,
+      // ou que le haut du message est hors de l'écran, le message n'est plus nouveau
+      $(el).removeClass("hfr-live-new");
       newMessagePanel.decrease();
     }
   });
@@ -901,21 +976,33 @@ function clearHighlight() {
     version       : VERSION,
     scriptOn      : false,
     autoScroll    : false,
-    notifications : false,
+    notifications : config.notification.enabled,
     pageIndex     : -1,
     messageIndex  : 0,
   };
   const DEFAULT_PAGE_DATA_STRING = JSON.stringify(DEFAULT_PAGE_DATA);
-  const PAGE_DATA = await GM.getValue(`${page.cat}&${page.post}`, DEFAULT_PAGE_DATA_STRING);
+  const PAGE_DATA = await GM.getValue(page.topicIndex, DEFAULT_PAGE_DATA_STRING);
   page.storedData = JSON.parse(PAGE_DATA);
   if (!page.storedData.version) page.storedData = JSON.parse(DEFAULT_PAGE_DATA_STRING);
-  page.autoScroll = page.storedData.autoScroll;
-  if (page.autoScroll) {
+  if (page.storedData.autoScroll) {
     page.resumeAutoScroll();
   } else {
     page.stopAutoScroll();
   }
 
+  if (page.storedData.notifications) {
+    bell.turnOn();
+  } else {
+    bell.turnOff();
+  }
+  
+  if (page.messageAnchor && page.messageAnchor > page.storedData.messageIndex) {
+    // Si l'url pointe vers un message qui est postérieur au dernier message lu
+    page.storedData.messageIndex = page.messageAnchor;
+    page.saveData();
+  }
+  page.highlightUnreadMessage();
+  
   if (page.storedData.scriptOn && page.storedData.pageIndex == parseInt(page.index)-1) {
     // Si le script était actif dans la page précédente, l'activer pour cette page
     ++page.storedData.pageIndex;
@@ -930,30 +1017,25 @@ function clearHighlight() {
       page.fetchedTable = $(".messagetable");
     } else {
       // Si la page déjà pleine, ajouter tous les messages aux notifications
-        if(config.notification.enabled && ("Notification" in window) && (!document.hasFocus() || config.notification.onfocus)) {
-          $(".messagetable").each(function() {page.notifications.push(this)});
+        if(page.storedData.notifications && ("Notification" in window) && (!document.hasFocus() || config.notification.onfocus)) {
+          $(".messagetable").each((i,el) => {page.notifications.push(el)});
           page.notifications.shift(); //Le premier message qui appartient à la page précédente est retiré
           page.notify();
         }
     }
   }
-  
-  if (page.storedData.scriptOn && 
-      page.storedData.pageIndex == parseInt(page.index) && 
-      !(page.messageAnchor && (!page.isLast || $(`a[name="t${page.messageAnchor}"]`).closest(".messagetable").next(".messagetable").get(0)))) {
-    // Si le script a déja été activé pour cette page et qu'il n'y a pas de nouveau message depuis la dernière visite, lancer le script en activant le bouton
+
+  if (page.storedData.scriptOn && page.storedData.pageIndex == parseInt(page.index)) {
+    // Si le script a déja été activé pour cette page, lancer le script en activant le bouton
     page.storedData.messageIndex = parseInt(listenumreponse[listenumreponse.length - 1]);
-    page.saveData();
+    // S'il y a eu des nouveaux messages depuis la dernière visite
+    if (!(page.messageAnchor && (!page.isLast || $(`a[name="t${page.messageAnchor}"]`).closest(".messagetable").next(".messagetable").get(0)))) page.stopAutoScroll();
     toggleScript();
-  } else {
-    if (page.messageAnchor && page.messageAnchor > page.storedData.messageIndex) {
-      page.storedData.messageIndex = page.messageAnchor;
-      page.saveData();
-    }
-    page.highlightUnreadMessage();
+  } else {  
     page.storedData.pageIndex = -1;
-    page.saveData();
   }
+  page.saveData();
+
 })();
 
 if (config.unreadIndicator || config.quotedIndicator) window.addEventListener("focus", page.updateTitle);
