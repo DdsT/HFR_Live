@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.8
+// @version        0.2.1
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -12,12 +12,10 @@
 // @match          *://forum.hardware.fr/forum2.php*
 // @match          *://forum.hardware.fr/hfr/*/*sujet_*
 // @require        https://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js
-// @require        https://greasemonkey.github.io/gm4-polyfill/gm4-polyfill.js
-// @grant          GM_getValue
-// @grant          GM_setValue
-// @grant          GM_deleteValue
-// @grant          GM_addStyle
 // @grant          GM.getValue
 // @grant          GM.setValue
 // @grant          GM.deleteValue
+// @grant          GM_getValue
+// @grant          GM_setValue
+// @grant          GM_deleteValue
 // ==/UserScript==

@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name           [HFR] Live mod DdsT
 // @namespace      ddst.github.io
-// @version        0.1.8
+// @version        0.2.1
 // @description    Vérifie périodiquement l'existence de nouveau messages et les ajoute à la page
 // @author         DdsT
 // @originalAuthor psykhi
@@ -12,18 +12,16 @@
 // @match          *://forum.hardware.fr/forum2.php*
 // @match          *://forum.hardware.fr/hfr/*/*sujet_*
 // @require        https://ajax.googleapis.com/ajax/libs/jquery/1/jquery.min.js
-// @require        https://greasemonkey.github.io/gm4-polyfill/gm4-polyfill.js
-// @grant          GM_getValue
-// @grant          GM_setValue
-// @grant          GM_deleteValue
-// @grant          GM_addStyle
 // @grant          GM.getValue
 // @grant          GM.setValue
 // @grant          GM.deleteValue
+// @grant          GM_getValue
+// @grant          GM_setValue
+// @grant          GM_deleteValue
 // ==/UserScript==
 
 /*
-Copyright (C) 2019 DdsT
+Copyright (C) 2020 DdsT
 
 This program is free software: you can redistribute it and/or modify
 it under the terms of the GNU Affero General Public License as published
@@ -36,7 +34,7 @@ MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
 GNU Affero General Public License for more details.
 
 You should have received a copy of the GNU Affero General Public License
-along with this program.  If not, see https://ddst.github.io/hfr_ColorTag/LICENSE.
+along with this program.  If not, see https://ddst.github.io/HFR_Live/LICENSE.
 */
 
 /************** TODO *****************
@@ -50,7 +48,7 @@ along with this program.  If not, see https://ddst.github.io/hfr_ColorTag/LICENS
 
 /*** Paramètres du script ***/
 let config = {
-  fetchInterval   : 4000, // Intervalle entre chaque requête (ne pas descendre trop bas sous peine de ban IP)
+  fetchInterval   : 5000, // Intervalle entre chaque requête (ne pas descendre trop bas sous peine de ban IP)
   contextMenu     : true, // Le script peut être piloté depuis le menu contextuel (au 12/2018 : Firefox uniquement)
   changePage      : true, // Le script passe automatiquement à la page suivante
   pageAmount      : 10,   // Nombre de pages à combiner avant de changer de page
@@ -138,10 +136,11 @@ let page = {
   isScrolling           : false,                                             // Un ordre de défilement a déjà été envoyé à la page
   isMerging             : false,                                             // La page suivante est en train d'être intégrée
   isLocked              : !document.hop,                                     // Le sujet est verrouillé
-  isFull                : false,
+  isFull                : false,                                             // La page a atteint son nombre maximal de messages
   autoScroll            : true,                                              // La page défile automatiquement
   resumeScrollRequested : false,                                             // Le défilement automatique rependra au prochain message
   notifications         : [],                                                // File d'attente des notifications
+  editTable             : {},                                                // Suivi des modifications des messages de la page
   get next() { // Page suivante
     return $(page.fetched).find(".pagepresuiv:first a");
   },
@@ -151,7 +150,6 @@ let page = {
 
   /* Passer à la page suivante */
   goNext() {
-    //console.log("page change...");
     setTimeout(() => window.location.href = $(page.fetched).find(".pagepresuiv:first a").attr("href"), config.changePageDelay);
   },
 
@@ -166,11 +164,20 @@ let page = {
   endFetch() {page.isFetching = false},
 
   succeedFetch(data) {
+    // Ajout des nouveaux messages :
     if (page.isMerging) {
       page.addNextPage(data);
     } else {
       page.addFetchedPage(data);
     }
+    // Vérification des modifications :
+    $(page.fetchedTable).find(".edited").closest(".messagetable").each((i,el) => {
+      let id = getID(el);
+      
+      if (checkModification(el)) {
+        
+      }
+    });
   },
 
   /* Ajouter les nouveaux messages à la page en cours */
@@ -179,15 +186,12 @@ let page = {
     page.checkLock(false);
     let newFetchedTable = $(page.fetched).find(".messagetable");
     let messageIndex = page.fetchedTable.length;
-    //console.log("old: " + page.fetchedTable.length + " " + getID(page.fetchedTable.get(messageIndex-1))
-    //           +" new: " + newFetchedTable.length + " " + getID(newFetchedTable.get(messageIndex-1))
-    //           );
     if (getID(page.fetchedTable.get(messageIndex-1)) != getID(newFetchedTable.get(messageIndex-1))) {
       //console.log("Deletion detected !");
     }
     for (; messageIndex < newFetchedTable.length; ++messageIndex) {
       page.queue.push(newFetchedTable.get(messageIndex));
-      //console.log("+ " + debug(newFetchedTable.get(messageIndex)));
+      checkModification(newFetchedTable.get(messageIndex));
     }
     page.fetchedTable = newFetchedTable;
     page.checkLock(true);
@@ -210,10 +214,8 @@ let page = {
     page.checkLock(false);
     page.fetchedTable = $(page.fetched).find(".messagetable");
     page.addAlert(`Page ${$(page.fetched).find(".cBackHeader b").last().text()}`);
-    //console.log("new: " + page.fetchedTable.length);
     for (; messageIndex < page.fetchedTable.length; ++messageIndex) {
       page.queue.push(page.fetchedTable.get(messageIndex));
-      //console.log("+ " + debug(page.fetchedTable.get(messageIndex)));
     }
     // Mise à jour des bandeaux de navigations :
     let newTopRow = $(page.fetched).find(".fondForum2PagesHaut");
@@ -263,7 +265,6 @@ let page = {
     if (message) {
       //un message est présent dans la file d'attente
       page.lastMessage.after(message);
-      //console.log("- " + debug(message));
       if (!message.classList.contains("hfr-live-alert")) {
         // Le message n'est pas une alerte venant du script
         let messageID = getID(message);
@@ -301,7 +302,6 @@ let page = {
           page.isFull = false;
           page.url = page.next.attr("href");
           page.isMerging = true;
-          //console.log("page merge...");
           page.requestScroll();
         } else {
           // plus de place sur la page actuelle, passage à la page suivante
@@ -493,6 +493,20 @@ let page = {
 page.post       = page.responseUrl.replace(/.*&post=(\d+).*/g, "$1");
 page.cat        = page.responseUrl.replace(/.*&cat=(\d+).*/g,  "$1");
 page.topicIndex = `${page.cat}&${page.post}`;
+// peuplement de la liste des messages avec leur dernière date d'édition et le nombre de citations :
+$("[id^=para]").each((i,el) => {
+  const id      = parseInt(el.id.substring(4));
+  const editDiv = $(el).find(".edited").get(0); 
+  let citations = 0;
+  let date      = 0;
+  if (editDiv) {
+    citations = parseInt(editDiv.textContent.replace(/.*cité (\d+) fois.*/,"$1"));
+    date      = parseInt(editDiv.textContent.replace(/.*(\d\d)-(\d\d)-(\d\d\d\d) à (\d\d):(\d\d):(\d\d)/,"$3$2$1$4$5$6"));
+    if (isNaN(citations)) citations = 0;
+    if (isNaN(date))      date = 0;
+  }
+  page.editTable[id] = [citations,date];
+});
 
 /* Réparer le lien de citation d'un message ajouté */
 function repairLink(message) {
@@ -549,7 +563,10 @@ function formatBody(message) {
 function displayNotification(title, option, message) {
   if (Notification.permission == "granted") {
     let n = new Notification(title, option);
-    if (message) n.onclick = () => message.scrollIntoView();
+    if (message) n.onclick = () => {
+      window.focus();
+      message.scrollIntoView();
+    };
     setTimeout(n.close.bind(n), config.notification.duration);
   } else if (Notification.permission != "denied") {
     Notification.requestPermission().then( (result) => {
@@ -560,6 +577,27 @@ function displayNotification(title, option, message) {
       }
     });
   }
+}
+
+/* Vérifier si un message a été modifié et le mettre à jour si besoin */
+function checkModification(message) {
+  const id      = getID(message);
+  const editDiv = $(message).find(".edited").get(0); 
+  let citations = 0;
+  let date      = 0;
+  let oldCitations = page.editTable[id] ? page.editTable[id][0] : null;
+  let oldDate      = page.editTable[id] ? page.editTable[id][1] : null;
+  if (editDiv) {
+    citations = parseInt(editDiv.textContent.replace(/.*cité (\d+) fois.*/,"$1"));
+    date      = parseInt(editDiv.textContent.replace(/.*(\d\d)-(\d\d)-(\d\d\d\d) à (\d\d):(\d\d):(\d\d)/,"$3$2$1$4$5$6"));
+    if (isNaN(citations)) citations = 0;
+    if (isNaN(date))      date = 0;
+  }
+  if (oldCitations != citations || oldDate != date) {
+    page.editTable[id] = [citations,date];
+    return true;
+  }
+  return false;
 }
 
 /* Fonction de débogage */
@@ -607,7 +645,7 @@ function toggleScript() {
 }
 
 /* Création des boutons */
-GM.addStyle(`
+addStyle(`
   .hfr-live-legacy, .hfr-live-led {
     float       : right;
     font-weight : bold;
@@ -680,9 +718,10 @@ function newLedButton() {
   led.setAttribute("colorblind",config.colorBlind);
   led.title = `${(page.isLive)?"Désactiver":"Activer"} [HFR] Live`;
   led.onclick = () => {
-    if (led.getAttribute("on") == "false") clearHighlight();
+    // if (led.getAttribute("on") == "false") clearHighlight();
     toggleScript();
   };
+  led.oncontextmenu = () => {clearHighlight(); return false};
   return led;
 }
 
@@ -711,12 +750,30 @@ $(".fondForum2PagesBas .pagepresuiv").last().after(newButton());
 
 /* Création du panneau de contrôle lors de l'exécution du script */
 let control = document.createElement("div");
-GM.addStyle(`
+
+// Récupération de la couleur personnalisée du forum pour le fond de page :
+let hfrBackgroundColor = document.head.innerHTML.match(/color_key=(.{6})\//);
+if (hfrBackgroundColor.length) {
+  hfrBackgroundColor = "rgb(" + hexToRgb(hfrBackgroundColor[1]) + ",0.9)";
+} else {
+  hfrBackgroundColor = "rgb(255,255,255,0.9)"
+}
+
+function hexToRgb(hex) {
+    var bigint = parseInt(hex, 16);
+    var r = (bigint >> 16) & 255;
+    var g = (bigint >> 8) & 255;
+    var b = bigint & 255;
+
+    return r + "," + g + "," + b;
+}
+
+addStyle(`
   #hfr-live-control {
     position         : fixed;
     height           : 19px;
     border           : 1px solid rgb(0,0,0,0.2);
-    background-color : rgb(255,255,255,0.9);
+    background       : ${hfrBackgroundColor};
   }
   #hfr-live-control[visible="true"][bottom="false"] {
     top           : -1px;
@@ -757,6 +814,7 @@ GM.addStyle(`
     margin-top : 4px;
   }
 `);
+
 control.id ="hfr-live-control";
 control.setAttribute("bottom",config.controlBottom);
 control.setAttribute("right",config.controlRight);
@@ -765,7 +823,7 @@ control.show = () => control.setAttribute("visible",true);
 control.hide = () => control.setAttribute("visible",false || config.controlAlwaysOn);
 
 let lock = document.createElement("img");
-GM.addStyle(`
+addStyle(`
   #hfr-live-lock {
     cursor     : pointer;
     transition : opacity 0.3s ease;
@@ -815,7 +873,7 @@ function resumeScrollObserver() {
    }
 }
 
-GM.addStyle(`
+addStyle(`
   #hfr-live-bell {
     cursor     : pointer;
     transition : opacity 0.3s ease;
@@ -868,40 +926,40 @@ lock.lock();
 /* Création du panneau d'indication de nouveaux messages */
 let newMessagePanel = document.createElement("div");
 let container = document.createElement("div");
-GM.addStyle(`
+addStyle(`
   #hfr-live-new-panel {
     position    : fixed;
     left        : 0;
     right       : 0;
     font-family : Verdana,Arial,Sans-serif,Helvetica;
     text-align  : center;
+    display     : none;
+    bottom      : 10px;
   }
 
   #hfr-live-new-panel>div {
-    margin        : 0 auto;
-    width         : 190px;
-    padding       : 3px;
-    border        : 1px solid rgb(0,0,0,0.2);
-    border-radius : 4px;
-    color         : #fff;
-    font-weight   : bold;
-    font-size     : small;
-    cursor        : pointer;
+    margin           : 0 auto;
+    width            : 190px;
+    padding          : 3px;
+    border           : 1px solid rgb(0,0,0,0.2);
+    border-radius    : 4px;
+    color            : #fff;
+    font-weight      : bold;
+    font-size        : small;
+    cursor           : pointer;
+    background-color : #4bc730;
   }
   #hfr-live-new-panel[visible="true"] {
-    bottom : 10px;
-  }
-  #hfr-live-new-panel[visible="false"] {
-    bottom : -50px;
+    display : block;
   }
   #hfr-live-new-panel[colorblind="true"]>div {
     background-color : #32b1ff;
   }
-  #hfr-live-new-panel[colorblind="false"]>div {
-    background-color : #4bc730;
-  }
   .hfr-live-highlight {
-    box-shadow : -3px 0px 1px -1px #4bc730;
+    box-shadow : -3px 0px 0px -1px #4bc730;
+  }
+  .hfr-live-modified {
+    box-shadow : -3px 0px 1px -1px #ff0000;
   }
 `);
 newMessagePanel.id ="hfr-live-new-panel";
@@ -970,8 +1028,20 @@ function clearHighlight() {
   $(".hfr-live-highlight").removeClass("hfr-live-highlight");
 }
 
+/* Remplace GM.addstyle pour des soucis de compatibilité */
+function addStyle(aCss) {
+  let head = document.getElementsByTagName('head')[0];
+  if (head) {
+    let style = document.createElement('style');
+    style.setAttribute('type', 'text/css');
+    style.textContent = aCss;
+    head.appendChild(style);
+  }
+}
+
 /* Vérification de l'état du script au chargement de la page */
 (async () => {
+
   const DEFAULT_PAGE_DATA = {
     version       : VERSION,
     scriptOn      : false,
@@ -1002,7 +1072,7 @@ function clearHighlight() {
     page.saveData();
   }
   page.highlightUnreadMessage();
-  
+
   if (page.storedData.scriptOn && page.storedData.pageIndex == parseInt(page.index)-1) {
     // Si le script était actif dans la page précédente, l'activer pour cette page
     ++page.storedData.pageIndex;
@@ -1024,7 +1094,7 @@ function clearHighlight() {
         }
     }
   }
-
+ 
   if (page.storedData.scriptOn && page.storedData.pageIndex == parseInt(page.index)) {
     // Si le script a déja été activé pour cette page, lancer le script en activant le bouton
     page.storedData.messageIndex = parseInt(listenumreponse[listenumreponse.length - 1]);
